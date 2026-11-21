@@ -289,4 +289,3 @@ class IqTunnelVpnService : VpnService() {
         private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     }
 }
-
