@@ -192,9 +192,13 @@ class UpdateService {
         ..followRedirects = false
         ..headers.addAll(headers);
       final response = await _client.send(request).timeout(timeout);
-      if (!response.isRedirect) return response;
-
       final location = response.headers['location'];
+      final isRedirect = response.isRedirect ||
+          (response.statusCode >= 300 &&
+              response.statusCode < 400 &&
+              location != null);
+      if (!isRedirect) return response;
+
       await _cancelResponseBody(response);
       if (location == null || location.trim().isEmpty) {
         throw const FormatException('Update server returned a redirect without a Location.');
