@@ -19,6 +19,11 @@ void main() {
       scrollable: find.byType(Scrollable).last,
     );
     expect(find.text('فحص تحديثات التطبيق'), findsOneWidget);
+
+    // Dispose the real VPN adapter and allow its async* stream cancellation
+    // to complete before the fake-async test binding checks pending timers.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 2));
   });
 
   testWidgets('about page describes verified updates without a license subpage', (tester) async {
