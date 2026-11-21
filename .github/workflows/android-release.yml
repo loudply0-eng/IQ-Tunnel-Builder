@@ -419,7 +419,7 @@ jobs:
               raise SystemExit("ORACLE_USER contains unsafe characters.")
           if not re.fullmatch(r"/[A-Za-z0-9._/-]+", dest) or ".." in dest.split("/"):
               raise SystemExit("ORACLE_DEPLOY_DIR must be a safe absolute path.")
-          value = os.environ["ORACLE_SSH_KEY"].replace("\\r", "").strip()
+          value = os.environ["ORACLE_SSH_KEY"].replace("\r", "").strip()
           data = value.encode() if "-----BEGIN " in value else base64.b64decode("".join(value.split()), validate=True)
           with open(os.path.expanduser("~/.ssh/id_ed25519"), "wb") as f:
               f.write(data.rstrip() + bytes([10]))
