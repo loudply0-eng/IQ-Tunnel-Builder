@@ -43,10 +43,11 @@ void main() {
 }
 
 class IqTunnelApp extends StatefulWidget {
-  const IqTunnelApp({super.key, this.vpnEngine, this.updateServiceFactory});
+  const IqTunnelApp({super.key, this.vpnEngine, this.updateServiceFactory, this.automaticUpdateCheckEnabled});
 
   final VpnEngine? vpnEngine;
   final UpdateService Function()? updateServiceFactory;
+  final bool? automaticUpdateCheckEnabled;
 
   @override
   State<IqTunnelApp> createState() => _IqTunnelAppState();
@@ -107,6 +108,7 @@ class _IqTunnelAppState extends State<IqTunnelApp> {
           onAccentColorChanged: _setAccentColor,
           vpnEngine: widget.vpnEngine,
           updateServiceFactory: widget.updateServiceFactory,
+          automaticUpdateCheckEnabled: widget.automaticUpdateCheckEnabled,
         ),
       );
 }
@@ -818,10 +820,12 @@ class HomePage extends StatefulWidget {
     required this.onAccentColorChanged,
     this.vpnEngine,
     this.updateServiceFactory,
+    this.automaticUpdateCheckEnabled,
   });
 
   final VpnEngine? vpnEngine;
   final UpdateService Function()? updateServiceFactory;
+  final bool? automaticUpdateCheckEnabled;
   final ThemeMode themeMode;
   final Color accentColor;
   final ValueChanged<ThemeMode> onThemeModeChanged;
@@ -861,7 +865,7 @@ class _HomePageState extends State<HomePage> {
     _profilesLoadFuture = _loadProfiles();
     _initializeVpnEngine();
 
-    if (kReleaseMode) {
+    if (widget.automaticUpdateCheckEnabled ?? kReleaseMode) {
       // Check for a signed update after the first frame so the home screen is
       // ready before any update dialog is presented. Debug and test builds do
       // not contact the production update service automatically.
