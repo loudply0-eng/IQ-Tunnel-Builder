@@ -61,7 +61,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         actions = []
         for line in workflow.splitlines():
             stripped = line.strip()
-            if stripped.startswith("- uses:"):
+            if stripped.startswith("uses:") or stripped.startswith("- uses:"):
                 action = stripped.split("uses:", 1)[1].split("#", 1)[0].strip()
                 actions.append(action)
         self.assertTrue(actions, "Expected third-party actions to be declared.")
