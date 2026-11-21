@@ -175,6 +175,47 @@ class UpdateService {
   final http.Client _client;
   final bool _ownsClient;
 
+  Future<http.StreamedResponse> _sendHttpsGet(
+    Uri initialUri,
+    Map<String, String> headers, {
+    required Duration timeout,
+  }) async {
+    var uri = initialUri;
+    for (var redirectCount = 0; redirectCount <= 5; redirectCount++) {
+      if (uri.scheme != 'https' || uri.host.isEmpty || uri.userInfo.isNotEmpty) {
+        throw const FormatException(
+          'Update requests and redirects must use HTTPS without embedded credentials.',
+        );
+      }
+
+      final request = http.Request('GET', uri)
+        ..followRedirects = false
+        ..headers.addAll(headers);
+      final response = await _client.send(request).timeout(timeout);
+      if (!response.isRedirect) return response;
+
+      final location = response.headers['location'];
+      await response.stream.drain<void>();
+      if (location == null || location.trim().isEmpty) {
+        throw const FormatException('Update server returned a redirect without a Location.');
+      }
+      if (redirectCount == 5) {
+        throw const FormatException('Too many redirects while retrieving an update.');
+      }
+
+      final nextUri = uri.resolve(location.trim());
+      if (nextUri.scheme != 'https' ||
+          nextUri.host.isEmpty ||
+          nextUri.userInfo.isNotEmpty) {
+        throw const FormatException(
+          'Update redirects to non-HTTPS destinations are blocked.',
+        );
+      }
+      uri = nextUri;
+    }
+    throw const FormatException('Too many redirects while retrieving an update.');
+  }
+
   Future<UpdateInfo?> check() async {
     if (updateManifestUrl.isEmpty || updatePublicKeyBase64.isEmpty) {
       throw const FormatException(
@@ -185,20 +226,16 @@ class UpdateService {
     if (manifestUri == null || manifestUri.scheme != 'https') {
       throw const FormatException('رابط التحديثات يجب أن يستخدم HTTPS.');
     }
-    final request = http.Request('GET', manifestUri)
-      ..followRedirects = true
-      ..headers.addAll({
+    final response = await _sendHttpsGet(
+      manifestUri,
+      {
         'Accept': 'application/json',
         'Cache-Control': 'no-cache, no-store, max-age=0',
         'Pragma': 'no-cache',
         'User-Agent': 'IQ-Tunnel-Updater',
-      });
-    final response = await _client.send(request).timeout(
-          const Duration(seconds: 20),
-        );
-    if (response.request?.url.scheme != 'https') {
-      throw const FormatException('Update manifest redirected away from HTTPS.');
-    }
+      },
+      timeout: const Duration(seconds: 20),
+    );
     if (response.statusCode == 404 || response.statusCode == 503) {
       throw const UpdateUnavailableException();
     }
@@ -262,18 +299,15 @@ class UpdateService {
     required void Function(int received, int total) onProgress,
   }) async {
     final uri = Uri.parse(update.downloadUrl);
-    final request = http.Request('GET', uri);
-    request.headers.addAll({
-      'Accept': 'application/vnd.android.package-archive, application/octet-stream',
-      'Cache-Control': 'no-cache',
-      'User-Agent': 'IQ-Tunnel-Updater',
-    });
-    final response = await _client.send(request).timeout(
-          const Duration(seconds: 30),
-        );
-    if (response.request?.url.scheme != 'https') {
-      throw const FormatException('APK download redirected away from HTTPS.');
-    }
+    final response = await _sendHttpsGet(
+      uri,
+      {
+        'Accept': 'application/vnd.android.package-archive, application/octet-stream',
+        'Cache-Control': 'no-cache',
+        'User-Agent': 'IQ-Tunnel-Updater',
+      },
+      timeout: const Duration(seconds: 30),
+    );
     if (response.statusCode != 200) {
       throw Exception('فشل تنزيل التحديث (${response.statusCode}).');
     }
