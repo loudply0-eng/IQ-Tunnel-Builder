@@ -235,6 +235,7 @@ jobs:
           UPDATE_PRIVATE_KEY_BASE64: ${{ secrets.UPDATE_PRIVATE_KEY_BASE64 }}
         run: |
           set -euo pipefail
+          umask 077
           printf '%s' "$UPDATE_PRIVATE_KEY_BASE64" | tr -d '[:space:]' | base64 --decode > /tmp/iq-update-private.pem
           openssl pkey -in /tmp/iq-update-private.pem -pubout -out /tmp/iq-update-public.pem
           DER_PUBLIC="$(openssl pkey -in /tmp/iq-update-private.pem -pubout -outform DER 2>/dev/null | tail -c 32 | base64 -w0)"
@@ -409,6 +410,7 @@ jobs:
           BUILD_NUMBER: ${{ steps.release_meta.outputs.build_number }}
         run: |
           set -euo pipefail
+          umask 077
           mkdir -p ~/.ssh
           python3 - <<'PY'
           import base64, os, re
