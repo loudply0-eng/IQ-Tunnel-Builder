@@ -451,7 +451,7 @@ jobs:
               "build_number": int(os.environ["BUILD_NUMBER"]),
               "download_url": "https://mahmoudaljuorany.store/updates/iq-tunnel/iq-tunnel-" + os.environ["VERSION"] + "-" + os.environ["BUILD_NUMBER"] + ".apk",
               "sha256": digest,
-              "notes": "إصلاحات وتحسينات الإصدار 1.0.9:\n• تحسين حفظ روابط VPN والاشتراكات دون تشغيل محرك الاتصال أثناء الحفظ.\n• إزالة استيراد ملفات VPN والاكتفاء بإضافة الروابط والاشتراكات.\n• نقل فحص التحديثات إلى الإعدادات بدلاً من الفحص التلقائي عند فتح التطبيق.\n• منع إرسال كلمات مرور الراوتر عبر HTTP إلى أسماء نطاقات محلية غير موثوقة؛ يُسمح فقط بعناوين IP خاصة أو localhost.\n• تحسينات عامة على الاستقرار وتجربة الاستخدام."
+              "notes": "التحديث الأمني 1.0.10:\n• إضافة موافقة صريحة لمرة واحدة قبل إرسال بيانات دخول OpenWrt عبر HTTP المحلي غير المشفر.\n• رفض HTTP إلى العناوين العامة والاستمرار بالتحقق من شهادات HTTPS.\n• تحديث اختبارات أمان اتصال الراوتر وتحسينات عامة."
           }
           payload = json.dumps(manifest, ensure_ascii=False, separators=(",", ":")).encode()
           open("/tmp/iq-update-payload.json", "wb").write(payload)
