@@ -468,7 +468,8 @@ jobs:
           with open("/tmp/iq-update-manifest.json", "w", encoding="utf-8") as f:
               json.dump(manifest, f, ensure_ascii=False, separators=(",", ":"))
           PY
-          scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes /tmp/iq-update-manifest.json "$ORACLE_USER@$ORACLE_HOST:$DEST/manifest.json"
+          scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes /tmp/iq-update-manifest.json "$ORACLE_USER@$ORACLE_HOST:$DEST/.manifest-${GITHUB_RUN_ID}.tmp"
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes "$ORACLE_USER@$ORACLE_HOST" "mv -f -- '$DEST/.manifest-${GITHUB_RUN_ID}.tmp' '$DEST/manifest.json'"
           curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' "https://mahmoudaljuorany.store/updates/iq-tunnel/manifest.json" -o /tmp/iq-update-manifest-published.json
           cmp --silent /tmp/iq-update-manifest.json /tmp/iq-update-manifest-published.json
 
