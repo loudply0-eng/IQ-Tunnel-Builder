@@ -122,6 +122,40 @@ void main() {
         throwsA(isA<OpenWrtException>()),
       );
       expect(sent, isFalse);
+
+      await expectLater(
+        client.inspect(
+          address: 'http://example.com',
+          username: 'root',
+          password: 'secret',
+          allowInsecureHttp: true,
+        ),
+        throwsA(isA<OpenWrtException>()),
+      );
+      expect(sent, isFalse);
+    });
+
+    test('allows HTTPS without the clear-text consent flag', () async {
+      final client = OpenWrtClient(
+        client: MockClient((request) async {
+          return http.Response(jsonEncode({'result': [6]}), 200);
+        }),
+      );
+
+      await expectLater(
+        client.inspect(
+          address: 'https://router.example',
+          username: 'root',
+          password: 'secret',
+        ),
+        throwsA(
+          isA<OpenWrtException>().having(
+            (error) => error.message,
+            'message',
+            contains('صلاحيات'),
+          ),
+        ),
+      );
     });
 
     test('requires explicit opt-in before sending credentials over local HTTP',
