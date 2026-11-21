@@ -28,7 +28,11 @@ Use GitHub's private vulnerability reporting facility from the repository Securi
 - Routine Android CI has read-only repository permissions and must not receive production secrets.
 - Signed artifacts and production publishing are manual-only workflows on `main`.
 - Production workflows use the `iq-tunnel-production` GitHub Environment. Configure that Environment to allow deployments from `main` only and, where a second trusted reviewer is available, require reviewer approval.
-- Move Android signing, Oracle SSH/deployment, and Ed25519 update-signing secrets into the Environment after it is configured. Remove duplicate repository-level copies once the Environment has been tested.
+- Production workflows intentionally use Environment-only secret names, not the legacy repository-secret names. Add these exact names under **Settings → Environments → iq-tunnel-production → Environment secrets**:
+  - `IQT_PROD_ANDROID_KEYSTORE_BASE64`, `IQT_PROD_ANDROID_KEYSTORE_PASSWORD`, `IQT_PROD_ANDROID_KEY_ALIAS`, `IQT_PROD_ANDROID_KEY_PASSWORD`
+  - `IQT_PROD_ORACLE_SSH_KEY`, `IQT_PROD_ORACLE_HOST`, `IQT_PROD_ORACLE_USER`, `IQT_PROD_ORACLE_DEPLOY_DIR`, `IQT_PROD_ORACLE_KNOWN_HOSTS`
+  - `IQT_PROD_UPDATE_PRIVATE_KEY_BASE64`
+- The legacy repository-level names are deliberately no longer read by release workflows. Keep the production workflows failing closed until the Environment is configured and the new Environment secrets have been populated. After confirming a signed test build, remove the old repository-level copies.
 - Keep third-party Actions pinned to immutable commit SHAs; keep checkout credentials disabled and token permissions read-only unless a narrowly scoped write is required.
 - Protect `main`: require pull requests, require the `IQ Tunnel Android CI / android-debug` status check, require at least one approval where practical, dismiss stale approvals after new commits, require conversation resolution, and block force-pushes and branch deletion.
 - Enable GitHub Dependency Graph and Dependabot alerts in the repository's Security settings. Dependency Review cannot run until Dependency Graph is enabled.
