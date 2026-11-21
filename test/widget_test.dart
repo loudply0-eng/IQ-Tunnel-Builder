@@ -3,6 +3,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:iq_tunnel/main.dart';
 import 'package:iq_tunnel/vpn/vpn_engine.dart';
 
+class _FakeUpdateService extends UpdateService {
+  int checkCount = 0;
+
+  @override
+  Future<UpdateInfo?> check() async {
+    checkCount++;
+    return null;
+  }
+
+  @override
+  void dispose() {}
+}
+
 class _FakeVpnEngine implements VpnEngine {
   @override
   VpnEngineStatus get status => VpnEngineStatus.disconnected;
@@ -34,12 +47,17 @@ class _FakeVpnEngine implements VpnEngine {
 
 void main() {
   testWidgets('home screen exposes VPN link entry and settings updates', (tester) async {
-    await tester.pumpWidget(IqTunnelApp(vpnEngine: _FakeVpnEngine()));
+    final fakeUpdateService = _FakeUpdateService();
+    await tester.pumpWidget(IqTunnelApp(
+      vpnEngine: _FakeVpnEngine(),
+      updateServiceFactory: () => fakeUpdateService,
+    ));
     await tester.pump();
     await tester.pumpAndSettle();
 
     expect(find.text('IQ Tunnel'), findsWidgets);
     expect(find.text('إضافة رابط أو اشتراك VPN'), findsOneWidget);
+    expect(fakeUpdateService.checkCount, 1);
 
     await tester.tap(find.byTooltip('الإعدادات'));
     await tester.pumpAndSettle();
