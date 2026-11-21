@@ -1056,7 +1056,6 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _checkUpdates({bool automatic = false}) async {
     if (checking || downloading) return;
-    _lastUpdateCheck = DateTime.now();
     setState(() {
       checking = true;
       status = _t('checking');
