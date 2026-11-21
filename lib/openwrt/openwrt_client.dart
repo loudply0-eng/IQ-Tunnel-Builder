@@ -25,8 +25,12 @@ class OpenWrtClient {
     required String address,
     required String username,
     required String password,
+    bool allowInsecureHttp = false,
   }) async {
-    final endpoint = _endpoint(address);
+    final endpoint = _endpoint(
+      address,
+      allowInsecureHttp: allowInsecureHttp,
+    );
     final cleanUsername = username.trim();
     if (cleanUsername.isEmpty || cleanUsername.length > 128) {
       throw const OpenWrtException('اسم مستخدم الراوتر غير صالح.');
@@ -223,7 +227,10 @@ class OpenWrtClient {
     return Map<String, dynamic>.from(result[1] as Map);
   }
 
-  Uri _endpoint(String input) {
+  Uri _endpoint(
+    String input, {
+    required bool allowInsecureHttp,
+  }) {
     var value = input.trim();
     if (value.isEmpty || value.length > 253) {
       throw const OpenWrtException('عنوان الراوتر غير صالح.');
@@ -243,10 +250,17 @@ class OpenWrtClient {
       );
     }
 
-    if (parsed.scheme == 'http' && !_isPrivateOrLocalHost(parsed.host)) {
-      throw const OpenWrtException(
-        'الاتصال غير المشفر مسموح فقط لعناوين الشبكة المحلية. استخدم HTTPS للوصول الخارجي.',
-      );
+    if (parsed.scheme == 'http') {
+      if (!_isPrivateOrLocalHost(parsed.host)) {
+        throw const OpenWrtException(
+          'الاتصال غير المشفر مرفوض للعناوين العامة. استخدم HTTPS للوصول الخارجي.',
+        );
+      }
+      if (!allowInsecureHttp) {
+        throw const OpenWrtException(
+          'هذا الراوتر يستخدم HTTP غير مشفر. يجب تأكيد المخاطر صراحةً قبل إرسال بيانات الدخول.',
+        );
+      }
     }
     return parsed.replace(path: '/ubus', query: null, fragment: null);
   }
