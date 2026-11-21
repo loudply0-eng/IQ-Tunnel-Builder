@@ -195,7 +195,7 @@ class UpdateService {
       if (!response.isRedirect) return response;
 
       final location = response.headers['location'];
-      await response.stream.drain<void>();
+      await _cancelResponseBody(response);
       if (location == null || location.trim().isEmpty) {
         throw const FormatException('Update server returned a redirect without a Location.');
       }
@@ -214,6 +214,11 @@ class UpdateService {
       uri = nextUri;
     }
     throw const FormatException('Too many redirects while retrieving an update.');
+  }
+
+  Future<void> _cancelResponseBody(http.StreamedResponse response) async {
+    final subscription = response.stream.listen((_) {});
+    await subscription.cancel();
   }
 
   Future<UpdateInfo?> check() async {
@@ -250,6 +255,7 @@ class UpdateService {
     // normal GET would allocate the entire response before rejecting it.
     final declaredLength = response.contentLength;
     if (declaredLength != null && declaredLength > _maxManifestBytes) {
+      await _cancelResponseBody(response);
       throw const FormatException('Update manifest is larger than 64 KiB.');
     }
     final manifestBytes = <int>[];
