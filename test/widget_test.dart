@@ -51,6 +51,7 @@ void main() {
     await tester.pumpWidget(IqTunnelApp(
       vpnEngine: _FakeVpnEngine(),
       updateServiceFactory: () => fakeUpdateService,
+      automaticUpdateCheckEnabled: true,
     ));
     await tester.pump();
     await tester.pumpAndSettle();
