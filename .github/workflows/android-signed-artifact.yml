@@ -221,7 +221,7 @@ jobs:
 
       - name: Resolve dependencies, analyze and test
         run: |
-          flutter pub get
+          flutter pub get --enforce-lockfile
           flutter analyze --no-fatal-infos
           flutter test
 
