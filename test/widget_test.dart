@@ -1,11 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iq_tunnel/main.dart';
+import 'package:iq_tunnel/vpn/vpn_engine.dart';
+
+class _FakeVpnEngine implements VpnEngine {
+  @override
+  VpnEngineStatus get status => VpnEngineStatus.disconnected;
+
+  @override
+  Stream<VpnEngineState> watchConnectionState() => const Stream<VpnEngineState>.empty();
+
+  @override
+  Stream<VpnTrafficStats> watchConnectionStats() => const Stream<VpnTrafficStats>.empty();
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<void> validateProfile(String payload) async {}
+
+  @override
+  Future<bool> hasNotificationPermission() async => true;
+
+  @override
+  Future<void> requestNotificationPermission() async {}
+
+  @override
+  Future<void> connect(String payload, {Duration timeout = const Duration(seconds: 120)}) async {}
+
+  @override
+  Future<void> disconnect() async {}
+}
 
 void main() {
   testWidgets('home screen exposes VPN link entry and settings updates', (tester) async {
-    await tester.pumpWidget(const IqTunnelApp());
-    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpWidget(IqTunnelApp(vpnEngine: _FakeVpnEngine()));
+    await tester.pump();
     await tester.pumpAndSettle();
 
     expect(find.text('IQ Tunnel'), findsWidgets);
@@ -20,10 +50,8 @@ void main() {
     );
     expect(find.text('فحص تحديثات التطبيق'), findsOneWidget);
 
-    // Dispose the real VPN adapter and allow its async* stream cancellation
-    // to complete before the fake-async test binding checks pending timers.
     await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
   });
 
   testWidgets('about page describes verified updates without a license subpage', (tester) async {
