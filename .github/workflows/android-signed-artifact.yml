@@ -1,20 +1,26 @@
 name: IQ Tunnel Signed Release APK Artifact
 
 on:
-  # Signed production APKs are built only when manually dispatched from main.
+  # Signed production APKs are built only after an explicit manual confirmation on main.
   # Public automatic CI remains available through android-ci.yml.
   workflow_dispatch:
+    inputs:
+      confirm_build:
+        description: Build a signed production APK artifact using the permanent signing key
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
   group: iq-tunnel-signed-apk-artifact
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   signed-release-apk:
-    if: ${{ github.ref == 'refs/heads/main' }}
+    if: ${{ inputs.confirm_build == true && github.ref == 'refs/heads/main' }}
     environment:
       name: iq-tunnel-production
     runs-on: ubuntu-latest
