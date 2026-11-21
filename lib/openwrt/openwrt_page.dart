@@ -64,6 +64,38 @@ class _OpenWrtPageState extends State<OpenWrtPage> {
     }
   }
 
+  bool _usesHttp(String address) {
+    var value = address.trim();
+    if (value.isEmpty) return false;
+    if (!value.contains('://')) value = 'http://$value';
+    return Uri.tryParse(value)?.scheme.toLowerCase() == 'http';
+  }
+
+  Future<bool> _confirmInsecureHttp() async {
+    final approved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.warning_amber_rounded),
+        title: const Text('اتصال غير مشفّر بالراوتر'),
+        content: const Text(
+          'عنوان الراوتر يستخدم HTTP. كلمة المرور وبيانات الجلسة ستنتقل دون تشفير، وقد يستطيع أي شخص على الشبكة نفسها اعتراضها. تابع فقط على شبكة محلية موثوقة تملكها. لا تستخدم هذا الخيار عبر Wi-Fi عام أو شبكة لا تثق بها. الموافقة لهذه المحاولة فقط.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('متابعة لمرة واحدة'),
+          ),
+        ],
+      ),
+    );
+    return approved == true;
+  }
+
   Future<void> _connect({bool refresh = false}) async {
     if (_busy) return;
     final address = _addressController.text.trim();
@@ -79,10 +111,16 @@ class _OpenWrtPageState extends State<OpenWrtPage> {
       _error = null;
     });
     try {
+      var allowInsecureHttp = false;
+      if (_usesHttp(address)) {
+        allowInsecureHttp = await _confirmInsecureHttp();
+        if (!allowInsecureHttp || !mounted) return;
+      }
       final snapshot = await _client.inspect(
         address: address,
         username: username,
         password: password,
+        allowInsecureHttp: allowInsecureHttp,
       );
       if (_remember) {
         await _storage.write(key: _savedAddressKey, value: address);
@@ -415,7 +453,7 @@ class _OpenWrtPageState extends State<OpenWrtPage> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'الأمان: لا ترسل كلمة المرور عبر HTTP إلى عنوان عام. استخدم هذه الميزة على شبكة الراوتر المحلية الموثوقة، أو اضبط HTTPS بشهادة موثوقة. لا نعطّل التحقق من الشهادات.',
+                        'الأمان: يُطلب تأكيد منفصل قبل كل اتصال HTTP محلي لأن كلمة المرور تنتقل دون تشفير. استخدمه فقط على شبكة تملكها وتثق بها. يُرفض HTTP إلى العناوين العامة، ويظل التحقق من شهادات HTTPS مفعّلاً.',
                         style: TextStyle(
                             color: theme.colorScheme.onSurfaceVariant),
                       ),
