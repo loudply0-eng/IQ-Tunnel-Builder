@@ -123,6 +123,32 @@ void main() {
       expect(sent, isFalse);
     });
 
+    test('does not trust local-looking DNS suffixes for plain HTTP', () async {
+      var sent = false;
+      final client = OpenWrtClient(
+        client: MockClient((request) async {
+          sent = true;
+          return http.Response('{}', 200);
+        }),
+      );
+
+      for (final address in [
+        'http://router.lan',
+        'http://router.local',
+        'http://router.home.arpa',
+      ]) {
+        await expectLater(
+          client.inspect(
+            address: address,
+            username: 'root',
+            password: 'secret',
+          ),
+          throwsA(isA<OpenWrtException>()),
+        );
+      }
+      expect(sent, isFalse);
+    });
+
     test('rejects URL-embedded credentials and unexpected paths', () async {
       final client = OpenWrtClient(
         client: MockClient((request) async => http.Response('{}', 200)),
