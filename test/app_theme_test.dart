@@ -22,4 +22,3 @@ void main() {
     expect(dark.colorScheme.brightness, Brightness.dark);
   });
 }
-
