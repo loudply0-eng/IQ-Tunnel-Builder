@@ -20,6 +20,8 @@ jobs:
   release:
     # Never expose production secrets or publish from a PR/feature branch.
     if: ${{ inputs.confirm_release == true && github.ref == 'refs/heads/main' }}
+    environment:
+      name: iq-tunnel-production
     timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
