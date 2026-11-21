@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show LicenseEntryWithLineBreaks, LicenseRegistry;
+import 'package:flutter/foundation.dart' show LicenseEntryWithLineBreaks, LicenseRegistry, kReleaseMode;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
@@ -861,11 +861,14 @@ class _HomePageState extends State<HomePage> {
     _profilesLoadFuture = _loadProfiles();
     _initializeVpnEngine();
 
-    // Check for a signed update after the first frame so the home screen is
-    // ready before any update dialog is presented.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _checkUpdates(automatic: true);
-    });
+    if (kReleaseMode) {
+      // Check for a signed update after the first frame so the home screen is
+      // ready before any update dialog is presented. Debug and test builds do
+      // not contact the production update service automatically.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _checkUpdates(automatic: true);
+      });
+    }
   }
 
   @override
