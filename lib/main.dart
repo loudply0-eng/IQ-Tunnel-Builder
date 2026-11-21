@@ -43,7 +43,9 @@ void main() {
 }
 
 class IqTunnelApp extends StatefulWidget {
-  const IqTunnelApp({super.key});
+  const IqTunnelApp({super.key, this.vpnEngine});
+
+  final VpnEngine? vpnEngine;
 
   @override
   State<IqTunnelApp> createState() => _IqTunnelAppState();
@@ -102,6 +104,7 @@ class _IqTunnelAppState extends State<IqTunnelApp> {
           accentColor: _accentColor,
           onThemeModeChanged: _setThemeMode,
           onAccentColorChanged: _setAccentColor,
+          vpnEngine: widget.vpnEngine,
         ),
       );
 }
@@ -739,8 +742,10 @@ class HomePage extends StatefulWidget {
     required this.accentColor,
     required this.onThemeModeChanged,
     required this.onAccentColorChanged,
+    this.vpnEngine,
   });
 
+  final VpnEngine? vpnEngine;
   final ThemeMode themeMode;
   final Color accentColor;
   final ValueChanged<ThemeMode> onThemeModeChanged;
@@ -762,7 +767,8 @@ class _HomePageState extends State<HomePage> {
   bool engineReady = false;
   bool tunnelBusy = false;
   VpnEngineStatus tunnelStatus = VpnEngineStatus.disconnected;
-  final VpnEngine _vpnEngine = LibXrayVpnEngineAdapter();
+  late final VpnEngine _vpnEngine =
+      widget.vpnEngine ?? LibXrayVpnEngineAdapter();
   String? tunnelError;
   List<Map<String, dynamic>> savedProfiles = <Map<String, dynamic>>[];
   String? activeProfileId;
