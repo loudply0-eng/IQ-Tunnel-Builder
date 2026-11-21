@@ -856,6 +856,12 @@ class _HomePageState extends State<HomePage> {
     _loadLanguage();
     _profilesLoadFuture = _loadProfiles();
     _initializeVpnEngine();
+
+    // Check for a signed update after the first frame so the home screen is
+    // ready before any update dialog is presented.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _checkUpdates(automatic: true);
+    });
   }
 
   @override
@@ -1133,17 +1139,21 @@ class _HomePageState extends State<HomePage> {
     if (checking || downloading) return;
     setState(() {
       checking = true;
-      status = _t('checking');
+      if (!automatic) status = _t('checking');
     });
     final service = UpdateService();
     try {
       final update = await service.check();
       if (!mounted) return;
       if (update == null) {
-        setState(() => status = '${_t('latest')} ($version)');
-        if (!automatic) _showMessage(_t('latest'));
+        if (!automatic) {
+          setState(() => status = '${_t('latest')} ($version)');
+          _showMessage(_t('latest'));
+        }
       } else {
-        setState(() => status = '${_t('newUpdate')} ${update.version}');
+        if (!automatic) {
+          setState(() => status = '${_t('newUpdate')} ${update.version}');
+        }
         await _showUpdateDialog(update, service);
       }
     } catch (error) {
@@ -1165,8 +1175,10 @@ class _HomePageState extends State<HomePage> {
         final diagnostic = (isNetworkError || error is HttpException)
             ? '\n' + error.toString()
             : '';
-        setState(() => status = message);
-        if (!automatic) _showMessage(message + diagnostic);
+        if (!automatic) {
+          setState(() => status = message);
+          _showMessage(message + diagnostic);
+        }
       }
     } finally {
       service.dispose();
