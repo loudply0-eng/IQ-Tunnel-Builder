@@ -31,6 +31,7 @@ Use GitHub's private vulnerability reporting facility from the repository Securi
 - Move Android signing, Oracle SSH/deployment, and Ed25519 update-signing secrets into the Environment after it is configured. Remove duplicate repository-level copies once the Environment has been tested.
 - Keep third-party Actions pinned to immutable commit SHAs; keep checkout credentials disabled and token permissions read-only unless a narrowly scoped write is required.
 - Protect `main`: require pull requests, require the `IQ Tunnel Android CI / android-debug` status check, require at least one approval where practical, dismiss stale approvals after new commits, require conversation resolution, and block force-pushes and branch deletion.
+- Enable GitHub Dependency Graph and Dependabot alerts in the repository's Security settings. Dependency Review cannot run until Dependency Graph is enabled.
 - CODEOWNERS only identifies reviewers. It does not enforce approval unless branch protection or a ruleset requires code-owner review.
 
 ## App data and cryptography
