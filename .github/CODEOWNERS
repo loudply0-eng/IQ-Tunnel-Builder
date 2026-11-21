@@ -1,0 +1,4 @@
+# Keep review responsibility explicit for application and release-security changes.
+* @loudply0-eng
+/.github/ @loudply0-eng
+/SECURITY.md @loudply0-eng
