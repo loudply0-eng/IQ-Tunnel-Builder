@@ -1,7 +1,7 @@
 name: iq_tunnel
 description: IQ Tunnel Android VPN client.
 publish_to: "none"
-version: 1.0.8+9
+version: 1.0.9+10
 environment:
   sdk: ">=3.4.0 <4.0.0"
 
@@ -31,4 +31,3 @@ flutter:
     - assets/licenses/THIRD_PARTY_NOTICES.txt
     - assets/licenses/libxray-MIT.txt
     - assets/licenses/xray-core-MPL-2.0.txt
-
