@@ -105,4 +105,3 @@ icon = '''<?xml version="1.0" encoding="utf-8"?>
 (adaptive / "ic_launcher_round.xml").write_text(icon, encoding="utf-8")
 
 print("Applied IQ Tunnel app label, clean shield launcher icon and adaptive icon.")
-
