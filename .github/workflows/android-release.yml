@@ -432,8 +432,8 @@ jobs:
           DEST="$ORACLE_DEPLOY_DIR"
           ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes "$ORACLE_USER@$ORACLE_HOST" "mkdir -p '$DEST'"
           scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes build/app/outputs/flutter-apk/app-release.apk "$ORACLE_USER@$ORACLE_HOST:$DEST/iq-tunnel-$VERSION-$BUILD_NUMBER.apk"
-          scp -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes build/third-party/xray-core-v26.11.9-source.tar.gz "$ORACLE_USER@$ORACLE_HOST:$DEST/xray-core-v26.11.9-source.tar.gz"
-          scp -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 "$ORACLE_USER@$ORACLE_HOST:$DEST/xray-core-v26.11.9-source.tar.gz.sha256"
+          scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes build/third-party/xray-core-v26.11.9-source.tar.gz "$ORACLE_USER@$ORACLE_HOST:$DEST/xray-core-v26.11.9-source.tar.gz"
+          scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 "$ORACLE_USER@$ORACLE_HOST:$DEST/xray-core-v26.11.9-source.tar.gz.sha256"
           PUBLIC_BASE="https://mahmoudaljuorany.store/updates/iq-tunnel"
           curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/iq-tunnel-$VERSION-$BUILD_NUMBER.apk" >/dev/null
           curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz" >/dev/null
@@ -468,7 +468,7 @@ jobs:
           with open("/tmp/iq-update-manifest.json", "w", encoding="utf-8") as f:
               json.dump(manifest, f, ensure_ascii=False, separators=(",", ":"))
           PY
-          scp -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes /tmp/iq-update-manifest.json "$ORACLE_USER@$ORACLE_HOST:$DEST/manifest.json"
+          scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes /tmp/iq-update-manifest.json "$ORACLE_USER@$ORACLE_HOST:$DEST/manifest.json"
           curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' "https://mahmoudaljuorany.store/updates/iq-tunnel/manifest.json" -o /tmp/iq-update-manifest-published.json
           cmp --silent /tmp/iq-update-manifest.json /tmp/iq-update-manifest-published.json
 
