@@ -1,0 +1,35 @@
+name: iq_tunnel
+description: IQ Tunnel Android VPN client.
+publish_to: "none"
+version: 1.0.7+8
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.2
+  file_picker: ^13.4.0
+  crypto: ^3.0.6
+  cryptography: ^2.7.0
+  flutter_secure_storage: ^10.3.4
+  path_provider: ^2.1.5
+  open_filex: ^4.7.0
+  package_info_plus: ^10.2.2
+  url_launcher: ^6.3.1
+  shared_preferences: ^2.3.2
+  iqtunnel_xray:
+    path: packages/iqtunnel_xray
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/licenses/THIRD_PARTY_NOTICES.txt
+    - assets/licenses/libxray-MIT.txt
+    - assets/licenses/xray-core-MPL-2.0.txt
+

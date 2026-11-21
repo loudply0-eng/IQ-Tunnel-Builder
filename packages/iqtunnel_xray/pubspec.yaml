@@ -1,0 +1,20 @@
+name: iqtunnel_xray
+description: Private Android platform bridge for IQ Tunnel's pinned libXray engine.
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.iqtunnel.xray
+        pluginClass: IqTunnelXrayPlugin
+
