@@ -1,0 +1,144 @@
+name: IQ Tunnel Android CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, fix/android-branding-parity]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free unused runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/system-images /opt/hostedtoolcache/CodeQL /usr/local/share/powershell /opt/ghc
+          df -h /
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.50.0'
+          cache: true
+      - name: Install Go for the pinned libXray build
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - name: Cache Go modules and build cache for libXray
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-libxray-v26.11.9-go1.27.3-gomobile-v0.0.0-20261011034528-197770444867
+          restore-keys: |
+            ${{ runner.os }}-libxray-v26.11.9-go1.27.3-
+      - name: Build the pinned official libXray Android AAR
+        env:
+          LIBXRAY_GOMOBILE_VERSION: v0.0.0-20261011034528-197770444867
+          LIBXRAY_ANDROID_API: '21'
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s "$GITHUB_WORKSPACE/test/tool" -p "*_test.py" -v
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "ndk;28.2.13676358"
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+          export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
+          git init /tmp/libXray
+          git -C /tmp/libXray remote add origin https://github.com/XTLS/libXray.git
+          git -C /tmp/libXray fetch --depth=1 origin 5a0f7d8d1c28b34afb5727b04b26a10f6dbac7e3
+          git -C /tmp/libXray checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/libXray rev-parse HEAD)" = "5a0f7d8d1c28b34afb5727b04b26a10f6dbac7e3"
+          python3 "$GITHUB_WORKSPACE/tool/patch_libxray_android.py" /tmp/libXray
+          cd /tmp/libXray
+          gofmt -w android_wrapper.go xray/xray.go
+          git diff --check
+          python3 build/main.py android
+          test -s libXray.aar
+          python3 "$GITHUB_WORKSPACE/tool/install_libxray_aar.py" \
+            "$PWD/libXray.aar" \
+            "$GITHUB_WORKSPACE/packages/iqtunnel_xray/android"
+          sha256sum "$PWD/libXray.aar"
+      - name: Verify generated libXray Android binding signatures
+        run: |
+          set -euo pipefail
+          LIBXRAY_JAR=packages/iqtunnel_xray/android/libs/libXray.jar
+          test -s "$LIBXRAY_JAR"
+          javap -classpath "$LIBXRAY_JAR" libXray.LibXray > /tmp/libxray-api.txt
+          javap -classpath "$LIBXRAY_JAR" libXray.DialerController > /tmp/libxray-dialer.txt
+          grep -q 'setTunFd(long)' /tmp/libxray-api.txt
+          grep -q 'resetTunFd()' /tmp/libxray-api.txt
+          grep -q 'registerDialerController' /tmp/libxray-api.txt
+          grep -q 'setDNS' /tmp/libxray-api.txt
+          grep -q 'getTrafficStats()' /tmp/libxray-api.txt
+          grep -q 'protectFd(long)' /tmp/libxray-dialer.txt
+      - name: Generate Android platform
+        run: |
+          flutter create --platforms=android --project-name iq_tunnel --org com.iqtunnel /tmp/iq_tunnel_scaffold
+          cp -a /tmp/iq_tunnel_scaffold/android ./android
+      - name: Configure Android Gradle compatibility
+        run: |
+          set -euo pipefail
+          PROPERTIES=android/gradle.properties
+          touch "$PROPERTIES"
+          if ! grep -q '^android.newDsl=' "$PROPERTIES"; then
+            echo 'android.newDsl=false' >> "$PROPERTIES"
+          fi
+      - name: Set Android compile SDK
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle.kts")
+          lines = p.read_text().splitlines()
+          matches = [i for i, line in enumerate(lines) if line.lstrip().startswith("compileSdk =")]
+          if len(matches) != 1:
+              raise SystemExit(f"Expected one compileSdk assignment, found {len(matches)}")
+          index = matches[0]
+          indent = lines[index][:len(lines[index]) - len(lines[index].lstrip())]
+          lines[index] = indent + "compileSdk = 36"
+          p.write_text(chr(10).join(lines) + chr(10))
+          PY
+      - name: Apply IQ Tunnel branding
+        run: python3 tool/apply_android_branding.py
+      - name: Add APK installer handoff permission
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+          permission = '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n'
+          if "REQUEST_INSTALL_PACKAGES" not in s:
+              s = s.replace("<application", permission + "    <application", 1)
+          internet_permission = '    <uses-permission android:name="android.permission.INTERNET" />\n'
+          if "android.permission.INTERNET" not in s:
+              s = s.replace("<application", internet_permission + "    <application", 1)
+          # Local OpenWrt LuCI commonly uses HTTP. The app-level OpenWrt
+          # client rejects clear-text URLs outside private/local host ranges.
+          if "android:usesCleartextTraffic=" not in s:
+              s = s.replace("<application", '<application android:usesCleartextTraffic="true"', 1)
+          p.write_text(s)
+          PY
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test
+      - name: Build debug APK
+        env:
+          UPDATE_MANIFEST_URL: https://mahmoudaljuorany.store/updates/iq-tunnel/manifest.json
+          UPDATE_PUBLIC_KEY: 4eOsYpXniRBp1ZTJjq5c3HbDW8tCvWbv1fr5PLVl+sk=
+        run: flutter build apk --debug --dart-define=UPDATE_MANIFEST_URL="$UPDATE_MANIFEST_URL" --dart-define=UPDATE_PUBLIC_KEY="$UPDATE_PUBLIC_KEY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iq-tunnel-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
