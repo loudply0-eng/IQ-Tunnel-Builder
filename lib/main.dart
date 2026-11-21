@@ -43,9 +43,10 @@ void main() {
 }
 
 class IqTunnelApp extends StatefulWidget {
-  const IqTunnelApp({super.key, this.vpnEngine});
+  const IqTunnelApp({super.key, this.vpnEngine, this.updateServiceFactory});
 
   final VpnEngine? vpnEngine;
+  final UpdateService Function()? updateServiceFactory;
 
   @override
   State<IqTunnelApp> createState() => _IqTunnelAppState();
@@ -105,6 +106,7 @@ class _IqTunnelAppState extends State<IqTunnelApp> {
           onThemeModeChanged: _setThemeMode,
           onAccentColorChanged: _setAccentColor,
           vpnEngine: widget.vpnEngine,
+          updateServiceFactory: widget.updateServiceFactory,
         ),
       );
 }
@@ -815,9 +817,11 @@ class HomePage extends StatefulWidget {
     required this.onThemeModeChanged,
     required this.onAccentColorChanged,
     this.vpnEngine,
+    this.updateServiceFactory,
   });
 
   final VpnEngine? vpnEngine;
+  final UpdateService Function()? updateServiceFactory;
   final ThemeMode themeMode;
   final Color accentColor;
   final ValueChanged<ThemeMode> onThemeModeChanged;
@@ -1141,7 +1145,7 @@ class _HomePageState extends State<HomePage> {
       checking = true;
       if (!automatic) status = _t('checking');
     });
-    final service = UpdateService();
+    final service = widget.updateServiceFactory?.call() ?? UpdateService();
     try {
       final update = await service.check();
       if (!mounted) return;
