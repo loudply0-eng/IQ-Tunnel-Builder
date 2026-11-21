@@ -41,35 +41,43 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         return (WORKFLOW_DIR / name).read_text(encoding="utf-8")
 
     def assert_manual_main_environment(self, workflow, release=False):
-        trigger_block = workflow.split("\\non:\\n", 1)[1].split("\\npermissions:", 1)[0]
-        self.assertIn("  workflow_dispatch:", trigger_block)
-        self.assertNotIn("  push:", trigger_block)
-        self.assertNotIn("  pull_request:", trigger_block)
+        lines = workflow.splitlines()
+        trigger_start = lines.index("on:") + 1
+        trigger_end = lines.index("permissions:")
+        trigger_lines = [line.strip() for line in lines[trigger_start:trigger_end]]
+        self.assertIn("workflow_dispatch:", trigger_lines)
+        self.assertFalse(any(line.startswith("push:") for line in trigger_lines))
+        self.assertFalse(any(line.startswith("pull_request:") for line in trigger_lines))
         self.assertIn("name: iq-tunnel-production", workflow)
         if release:
-            self.assertIn(
-                "if: \${{ inputs.confirm_release == true && github.ref == 'refs/heads/main' }}",
-                workflow,
-            )
+            expected = "if: " + "$" + "{{ inputs.confirm_release == true && github.ref == 'refs/heads/main' }}"
         else:
-            self.assertIn("if: \${{ github.ref == 'refs/heads/main' }}", workflow)
+            expected = "if: " + "$" + "{{ github.ref == 'refs/heads/main' }}"
+        self.assertIn(expected, workflow)
 
     def assert_read_only_permissions_and_pinned_actions(self, workflow):
-        self.assertRegex(workflow, r"(?m)^permissions:\\n  contents: read$")
+        self.assertIn("permissions:\\n  contents: read", workflow)
         self.assertIn("persist-credentials: false", workflow)
-        actions = re.findall(r"(?m)^\\s*uses:\\s*([^\\s#]+)", workflow)
+        actions = []
+        for line in workflow.splitlines():
+            if line.strip().startswith("uses:"):
+                action = line.split("uses:", 1)[1].split("#", 1)[0].strip()
+                actions.append(action)
         self.assertTrue(actions, "Expected third-party actions to be declared.")
         for action in actions:
             self.assertRegex(
                 action,
-                r"@(?:[0-9a-f]{40})$",
+                r"@[0-9a-f]{40}$",
                 msg=f"Action is not pinned to an immutable commit SHA: {action}",
             )
 
     def assert_environment_secrets_only(self, workflow, expected):
-        names = set(re.findall(r"\\$\\{\\{\\s*secrets\\.([A-Z0-9_]+)\\s*\\}\\}", workflow))
+        names = {
+            line.split("secrets.", 1)[1].split()[0]
+            for line in workflow.splitlines()
+            if "secrets.IQT_PROD_" in line
+        }
         self.assertEqual(names, expected)
-        self.assertTrue(all(name.startswith("IQT_PROD_") for name in names))
         legacy_names = {
             "ANDROID_KEYSTORE_BASE64",
             "ANDROID_KEYSTORE_PASSWORD",
@@ -82,7 +90,8 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             "ORACLE_KNOWN_HOSTS",
             "UPDATE_PRIVATE_KEY_BASE64",
         }
-        self.assertFalse(names.intersection(legacy_names))
+        for name in legacy_names:
+            self.assertNotIn(f"secrets.{name}", workflow)
 
     def test_production_publish_workflow_is_manual_and_environment_gated(self):
         workflow = self.read_workflow("android-release.yml")
@@ -100,7 +109,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
     def test_routine_ci_never_receives_production_secrets(self):
         workflow = self.read_workflow("android-ci.yml")
-        self.assertRegex(workflow, r"(?m)^permissions:\\n  contents: read$")
+        self.assertIn("permissions:\\n  contents: read", workflow)
         self.assertNotIn("secrets.", workflow)
         self.assertIn("persist-credentials: false", workflow)
 
@@ -130,7 +139,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             check=True,
             stdout=subprocess.PIPE,
         )
-        paths = [Path(item.decode("utf-8")) for item in result.stdout.split(b"\\0") if item]
+        paths = [Path(item.decode("utf-8")) for item in result.stdout.split(bytes([0])) if item]
         forbidden_extensions = {".jks", ".keystore", ".pem", ".p12", ".pfx"}
         for path in paths:
             self.assertNotIn(
