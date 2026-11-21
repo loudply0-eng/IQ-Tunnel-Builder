@@ -34,4 +34,3 @@ void main() {
     expect(update.notes, 'Security fixes');
   });
 }
-
