@@ -34,7 +34,7 @@ class _TestVpnEngine implements VpnEngine {
 
 void main() {
   testWidgets('shows IQ Tunnel VPN home screen', (tester) async {
-    await tester.pumpWidget(const IqTunnelApp(vpnEngine: _TestVpnEngine()));
+    await tester.pumpWidget(IqTunnelApp(vpnEngine: _TestVpnEngine()));
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
 
@@ -61,4 +61,3 @@ void main() {
     expect(find.text('التراخيص مفتوحة المصدر'), findsOneWidget);
   });
 }
-
