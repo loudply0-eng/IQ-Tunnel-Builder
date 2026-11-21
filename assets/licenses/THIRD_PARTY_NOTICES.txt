@@ -1,0 +1,42 @@
+IQ Tunnel — Third-Party Notices
+================================
+
+IQ Tunnel's Flutter application and product-specific UI are distributed under
+the IQ Tunnel proprietary terms. The notices below apply only to the named
+third-party components; they do not relicense the IQ Tunnel application.
+
+1. XTLS/libXray v26.11.9
+-----------------------
+Project: https://github.com/XTLS/libXray
+License: MIT
+Copyright: XTLS
+
+The Android wrapper is built from the pinned upstream source and patched by
+tool/patch_libxray_android.py to expose the Android TUN file descriptor
+(SetTunFd/ResetTunFd) and in-process Xray traffic counters (GetTrafficStats).
+The patcher and the complete build recipe are in this private development
+repository. The MIT license text is included in this application.
+
+2. XTLS/Xray-core v26.11.9
+-------------------------
+Project: https://github.com/XTLS/Xray-core
+License: Mozilla Public License 2.0 (MPL-2.0)
+
+Xray-core is distributed as part of the native libXray Android artifact.
+The corresponding unmodified Xray-core v26.11.9 source archive (commit
+676eaf66f8f05d4d558ee7a74b4736623d3feeb9, pinned by libXray's go.mod) is published at:
+
+https://mahmoudaljuorany.store/updates/iq-tunnel/xray-core-v26.11.9-source.tar.gz
+
+SHA-256 checksum:
+https://mahmoudaljuorany.store/updates/iq-tunnel/xray-core-v26.11.9-source.tar.gz.sha256
+
+The complete MPL-2.0 license text is included in this application. Recipients
+retain the rights granted by the MPL for MPL-covered components. The source
+archive is supplied for the corresponding Xray-core release; it does not
+contain the proprietary IQ Tunnel application.
+
+3. Other Flutter/Dart dependencies
+----------------------------------
+Their respective licenses are provided through Flutter's in-app Open Source
+Licenses page.
