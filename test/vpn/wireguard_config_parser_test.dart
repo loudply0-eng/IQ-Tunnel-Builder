@@ -196,4 +196,3 @@ Endpoint = vpn.example.com:51820
     });
   });
 }
-
