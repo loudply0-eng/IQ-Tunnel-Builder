@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show LicenseEntryWithLineBreaks, LicenseRegistry;
+import 'package:flutter/foundation.dart' show LicenseEntryWithLineBreaks, LicenseRegistry, kReleaseMode;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
@@ -43,9 +43,11 @@ void main() {
 }
 
 class IqTunnelApp extends StatefulWidget {
-  const IqTunnelApp({super.key, this.vpnEngine});
+  const IqTunnelApp({super.key, this.vpnEngine, this.updateServiceFactory, this.automaticUpdateCheckEnabled});
 
   final VpnEngine? vpnEngine;
+  final UpdateService Function()? updateServiceFactory;
+  final bool? automaticUpdateCheckEnabled;
 
   @override
   State<IqTunnelApp> createState() => _IqTunnelAppState();
@@ -105,6 +107,8 @@ class _IqTunnelAppState extends State<IqTunnelApp> {
           onThemeModeChanged: _setThemeMode,
           onAccentColorChanged: _setAccentColor,
           vpnEngine: widget.vpnEngine,
+          updateServiceFactory: widget.updateServiceFactory,
+          automaticUpdateCheckEnabled: widget.automaticUpdateCheckEnabled,
         ),
       );
 }
@@ -815,9 +819,13 @@ class HomePage extends StatefulWidget {
     required this.onThemeModeChanged,
     required this.onAccentColorChanged,
     this.vpnEngine,
+    this.updateServiceFactory,
+    this.automaticUpdateCheckEnabled,
   });
 
   final VpnEngine? vpnEngine;
+  final UpdateService Function()? updateServiceFactory;
+  final bool? automaticUpdateCheckEnabled;
   final ThemeMode themeMode;
   final Color accentColor;
   final ValueChanged<ThemeMode> onThemeModeChanged;
@@ -856,6 +864,15 @@ class _HomePageState extends State<HomePage> {
     _loadLanguage();
     _profilesLoadFuture = _loadProfiles();
     _initializeVpnEngine();
+
+    if (widget.automaticUpdateCheckEnabled ?? kReleaseMode) {
+      // Check for a signed update after the first frame so the home screen is
+      // ready before any update dialog is presented. Debug and test builds do
+      // not contact the production update service automatically.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _checkUpdates(automatic: true);
+      });
+    }
   }
 
   @override
@@ -1133,17 +1150,21 @@ class _HomePageState extends State<HomePage> {
     if (checking || downloading) return;
     setState(() {
       checking = true;
-      status = _t('checking');
+      if (!automatic) status = _t('checking');
     });
-    final service = UpdateService();
+    final service = widget.updateServiceFactory?.call() ?? UpdateService();
     try {
       final update = await service.check();
       if (!mounted) return;
       if (update == null) {
-        setState(() => status = '${_t('latest')} ($version)');
-        if (!automatic) _showMessage(_t('latest'));
+        if (!automatic) {
+          setState(() => status = '${_t('latest')} ($version)');
+          _showMessage(_t('latest'));
+        }
       } else {
-        setState(() => status = '${_t('newUpdate')} ${update.version}');
+        if (!automatic) {
+          setState(() => status = '${_t('newUpdate')} ${update.version}');
+        }
         await _showUpdateDialog(update, service);
       }
     } catch (error) {
@@ -1165,8 +1186,10 @@ class _HomePageState extends State<HomePage> {
         final diagnostic = (isNetworkError || error is HttpException)
             ? '\n' + error.toString()
             : '';
-        setState(() => status = message);
-        if (!automatic) _showMessage(message + diagnostic);
+        if (!automatic) {
+          setState(() => status = message);
+          _showMessage(message + diagnostic);
+        }
       }
     } finally {
       service.dispose();
