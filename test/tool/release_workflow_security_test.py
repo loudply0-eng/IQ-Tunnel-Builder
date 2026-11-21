@@ -62,9 +62,9 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         if confirmation_input:
             self.assertRegex(
                 workflow,
-                r"(?s)workflow_dispatch:\\s+inputs:\\s+"
+                r"(?s)workflow_dispatch:\s+inputs:\s+"
                 + re.escape(confirmation_input)
-                + r":\\s+description:.*?\\s+required: true\\s+type: boolean\\s+default: false",
+                + r":\s+description:.*?\s+required: true\s+type: boolean\s+default: false",
             )
 
     def assert_read_only_permissions_and_pinned_actions(self, workflow):
