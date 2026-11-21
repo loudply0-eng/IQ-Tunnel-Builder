@@ -1,0 +1,336 @@
+name: IQ Tunnel Signed Release APK Artifact
+
+on:
+  # Build a permanent-key-signed APK only after the main-branch CI succeeds.
+  # This workflow creates a downloadable artifact; it never publishes to Oracle.
+  workflow_run:
+    workflows: ["IQ Tunnel Android CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iq-tunnel-signed-apk-artifact
+  cancel-in-progress: false
+
+jobs:
+  signed-release-apk:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' }}
+    environment:
+      name: iq-tunnel-production
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Free unused runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/system-images /opt/hostedtoolcache/CodeQL /usr/local/share/powershell /opt/ghc
+          df -h /
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.50.0'
+          cache: true
+
+      - name: Validate permanent Android signing secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo "Missing ANDROID_KEYSTORE_BASE64"; exit 1; }
+          test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo "Missing ANDROID_KEYSTORE_PASSWORD"; exit 1; }
+          test -n "$ANDROID_KEY_ALIAS" || { echo "Missing ANDROID_KEY_ALIAS"; exit 1; }
+          test -n "$ANDROID_KEY_PASSWORD" || { echo "Missing ANDROID_KEY_PASSWORD"; exit 1; }
+
+      - name: Install Go for the pinned libXray build
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache: false
+
+      - name: Cache Go modules and build cache for libXray
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-libxray-v26.11.9-go1.27.3-gomobile-v0.0.0-20261011034528-197770444867
+          restore-keys: |
+            ${{ runner.os }}-libxray-v26.11.9-go1.27.3-
+
+      - name: Build the pinned official libXray Android AAR
+        env:
+          LIBXRAY_GOMOBILE_VERSION: v0.0.0-20261011034528-197770444867
+          LIBXRAY_ANDROID_API: '21'
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s "$GITHUB_WORKSPACE/test/tool" -p "*_test.py" -v
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "ndk;28.2.13676358"
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+          export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
+          git init /tmp/libXray
+          git -C /tmp/libXray remote add origin https://github.com/XTLS/libXray.git
+          git -C /tmp/libXray fetch --depth=1 origin 5a0f7d8d1c28b34afb5727b04b26a10f6dbac7e3
+          git -C /tmp/libXray checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/libXray rev-parse HEAD)" = "5a0f7d8d1c28b34afb5727b04b26a10f6dbac7e3"
+          python3 "$GITHUB_WORKSPACE/tool/patch_libxray_android.py" /tmp/libXray
+          cd /tmp/libXray
+          gofmt -w android_wrapper.go xray/xray.go
+          git diff --check
+          python3 build/main.py android
+          test -s libXray.aar
+          python3 "$GITHUB_WORKSPACE/tool/install_libxray_aar.py" \
+            "$PWD/libXray.aar" \
+            "$GITHUB_WORKSPACE/packages/iqtunnel_xray/android"
+          sha256sum "$PWD/libXray.aar"
+          # Include the exact Xray-core source revision required by the MPL-2.0 license.
+          git init /tmp/xray-core-source
+          git -C /tmp/xray-core-source remote add origin https://github.com/XTLS/Xray-core.git
+          git -C /tmp/xray-core-source fetch --depth=1 origin 676eaf66f8f05d4d558ee7a74b4736623d3feeb9
+          git -C /tmp/xray-core-source checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/xray-core-source rev-parse HEAD)" = "676eaf66f8f05d4d558ee7a74b4736623d3feeb9"
+          mkdir -p "$GITHUB_WORKSPACE/build/third-party"
+          git -C /tmp/xray-core-source archive --format=tar --prefix=xray-core-v26.11.9/ HEAD | gzip -n > "$GITHUB_WORKSPACE/build/third-party/xray-core-v26.11.9-source.tar.gz"
+          sha256sum "$GITHUB_WORKSPACE/build/third-party/xray-core-v26.11.9-source.tar.gz" > "$GITHUB_WORKSPACE/build/third-party/xray-core-v26.11.9-source.tar.gz.sha256"
+          test -s "$GITHUB_WORKSPACE/build/third-party/xray-core-v26.11.9-source.tar.gz"
+
+      - name: Verify generated libXray Android binding signatures
+        run: |
+          set -euo pipefail
+          LIBXRAY_JAR=packages/iqtunnel_xray/android/libs/libXray.jar
+          test -s "$LIBXRAY_JAR"
+          javap -classpath "$LIBXRAY_JAR" libXray.LibXray > /tmp/libxray-api.txt
+          javap -classpath "$LIBXRAY_JAR" libXray.DialerController > /tmp/libxray-dialer.txt
+          grep -q 'setTunFd(long)' /tmp/libxray-api.txt
+          grep -q 'resetTunFd()' /tmp/libxray-api.txt
+          grep -q 'registerDialerController' /tmp/libxray-api.txt
+          grep -q 'setDNS' /tmp/libxray-api.txt
+          grep -q 'getTrafficStats()' /tmp/libxray-api.txt
+          grep -q 'protectFd(long)' /tmp/libxray-dialer.txt
+
+      - name: Generate Android platform
+        run: |
+          flutter create --platforms=android --project-name iq_tunnel --org com.iqtunnel /tmp/iq_tunnel_scaffold
+          cp -a /tmp/iq_tunnel_scaffold/android ./android
+
+      - name: Configure Android Gradle compatibility
+        run: |
+          set -euo pipefail
+          PROPERTIES=android/gradle.properties
+          touch "$PROPERTIES"
+          if ! grep -q '^android.newDsl=' "$PROPERTIES"; then
+            echo 'android.newDsl=false' >> "$PROPERTIES"
+          fi
+
+      - name: Set Android compile SDK
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle.kts")
+          lines = p.read_text().splitlines()
+          matches = [i for i, line in enumerate(lines) if line.lstrip().startswith("compileSdk =")]
+          if len(matches) != 1:
+              raise SystemExit(f"Expected one compileSdk assignment, found {len(matches)}")
+          index = matches[0]
+          indent = lines[index][:len(lines[index]) - len(lines[index].lstrip())]
+          lines[index] = indent + "compileSdk = 36"
+          p.write_text(chr(10).join(lines) + chr(10))
+          PY
+
+      - name: Apply IQ Tunnel branding
+        run: python3 tool/apply_android_branding.py
+
+      - name: Add APK installer handoff permission
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+          permission = '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n'
+          if "REQUEST_INSTALL_PACKAGES" not in s:
+              s = s.replace("<application", permission + "    <application", 1)
+          internet_permission = '    <uses-permission android:name="android.permission.INTERNET" />\n'
+          if "android.permission.INTERNET" not in s:
+              s = s.replace("<application", internet_permission + "    <application", 1)
+          # Local OpenWrt LuCI commonly uses HTTP. The app-level OpenWrt
+          # client rejects clear-text URLs outside private/local host ranges.
+          if "android:usesCleartextTraffic=" not in s:
+              s = s.replace("<application", '<application android:usesCleartextTraffic="true"', 1)
+          p.write_text(s)
+          PY
+
+      - name: Configure permanent Android signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > android/app/upload-keystore.jks
+          cat > android/key.properties <<EOF
+          storeFile=upload-keystore.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle.kts")
+          s = p.read_text()
+          s = "import java.util.Properties\n" + s
+          s = s.replace("android {", """android {
+              val keystoreProperties = Properties()
+              val keystorePropertiesFile = rootProject.file("key.properties")
+              require(keystorePropertiesFile.exists()) { "Release signing properties are missing" }
+              keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+          """, 1)
+          s = s.replace("    buildTypes {", """    signingConfigs {
+                  create("release") {
+                      storeFile = file(keystoreProperties.getProperty("storeFile"))
+                      storePassword = keystoreProperties.getProperty("storePassword")
+                      keyAlias = keystoreProperties.getProperty("keyAlias")
+                      keyPassword = keystoreProperties.getProperty("keyPassword")
+                  }
+              }
+
+              buildTypes {""", 1)
+          needle = 'signingConfig = signingConfigs.getByName("debug")'
+          if s.count(needle) != 1:
+              raise SystemExit(f"Expected exactly one generated debug signing assignment, found {s.count(needle)}")
+          s = s.replace(needle, 'signingConfig = signingConfigs.getByName("release")', 1)
+          if s.count('signingConfig = signingConfigs.getByName("release")') != 1:
+              raise SystemExit("Release signing assignment was not applied exactly once")
+          p.write_text(s)
+          PY
+          chmod 600 android/key.properties android/app/upload-keystore.jks
+          test "$ANDROID_KEY_ALIAS" = "iq-tunnel" || { echo "Unexpected Android signing alias"; exit 1; }
+          KEY_CERT_SHA256="$(keytool -list -v -keystore android/app/upload-keystore.jks -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" | awk -F': ' '/SHA256:/{gsub(":", "", $2); print tolower($2); exit}')"
+          EXPECTED_KEY_CERT_SHA256='cc96499ac23bf3a9101b2a7cc7d19feef852e61a5902860abe15218a8968b017'
+          test "$KEY_CERT_SHA256" = "$EXPECTED_KEY_CERT_SHA256" || { echo "Configured Android keystore certificate does not match the approved IQ Tunnel release key"; exit 1; }
+          keytool -list -keystore android/app/upload-keystore.jks -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
+
+      - name: Resolve dependencies, analyze and test
+        run: |
+          flutter pub get
+          flutter analyze --no-fatal-infos
+          flutter test
+
+      - name: Ensure signed artifact build number advances the published manifest
+        env:
+          UPDATE_MANIFEST_URL: https://mahmoudaljuorany.store/updates/iq-tunnel/manifest.json
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          pubspec = Path("pubspec.yaml").read_text(encoding="utf-8")
+          match = re.search(r"^version:\s*([0-9.]+)\+([0-9]+)\s*$", pubspec, re.M)
+          if not match:
+              raise SystemExit("pubspec.yaml version must use version+buildNumber")
+          new_build = int(match.group(2))
+
+          url = os.environ["UPDATE_MANIFEST_URL"]
+          if not url.startswith("https://"):
+              raise SystemExit("Update manifest URL must use HTTPS.")
+          request = urllib.request.Request(
+              url,
+              headers={
+                  "Cache-Control": "no-cache",
+                  "Pragma": "no-cache",
+                  "User-Agent": "IQ-Tunnel-Updater",
+              },
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  if not response.geturl().startswith("https://"):
+                      raise SystemExit("Published update manifest redirected away from HTTPS.")
+                  payload = response.read(64 * 1024 + 1)
+                  if len(payload) > 64 * 1024:
+                      raise SystemExit("Published update manifest exceeds the 64 KiB limit.")
+                  current = json.loads(payload)
+          except urllib.error.HTTPError as error:
+              if error.code == 404 and error.geturl().startswith("https://"):
+                  print("No published update manifest exists; allowing the first signed artifact.")
+                  current = None
+              else:
+                  print(
+                      "Update manifest HTTP preflight failed: "
+                      f"status={error.code}, reason={error.reason!s}, final_url={error.geturl()}"
+                  )
+                  raise SystemExit(
+                      f"Could not read the published update manifest (HTTP {error.code})."
+                  ) from error
+          except Exception as error:
+              raise SystemExit("Could not read the published update manifest: " + str(error))
+
+          if current is not None:
+              if not isinstance(current, dict):
+                  raise SystemExit("Published update manifest has an invalid JSON shape.")
+              try:
+                  current_build = int(current["build_number"])
+              except (KeyError, TypeError, ValueError) as error:
+                  raise SystemExit("Published update manifest has an invalid build_number.") from error
+              if new_build <= current_build:
+                  raise SystemExit(
+                      f"Release build number {new_build} must be greater than published "
+                      f"build number {current_build}."
+                  )
+          print(f"Release build number {new_build} advances the published manifest.")
+          PY
+
+      - name: Build signed Release APK
+        env:
+          UPDATE_MANIFEST_URL: https://mahmoudaljuorany.store/updates/iq-tunnel/manifest.json
+          UPDATE_PUBLIC_KEY: 4eOsYpXniRBp1ZTJjq5c3HbDW8tCvWbv1fr5PLVl+sk=
+        run: flutter build apk --release --dart-define=UPDATE_MANIFEST_URL="$UPDATE_MANIFEST_URL" --dart-define=UPDATE_PUBLIC_KEY="$UPDATE_PUBLIC_KEY"
+
+      - name: Verify APK signature and prepare artifact
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          SIGNER_SHA256="$("$APKSIGNER" verify --print-certs "$APK" | awk -F': ' '/certificate SHA-256 digest:/{print tolower($2); exit}')"
+          EXPECTED_SIGNER_SHA256='cc96499ac23bf3a9101b2a7cc7d19feef852e61a5902860abe15218a8968b017'
+          test "$SIGNER_SHA256" = "$EXPECTED_SIGNER_SHA256" || { echo "APK was not signed with the approved permanent IQ Tunnel key"; exit 1; }
+          mkdir -p build/iq-tunnel-signed-release
+          python3 - <<'PY'
+          import pathlib, re, shutil
+          pubspec = pathlib.Path("pubspec.yaml").read_text(encoding="utf-8")
+          match = re.search(r"^version:\s*([0-9.]+)\+([0-9]+)\s*$", pubspec, re.M)
+          if not match:
+              raise SystemExit("pubspec.yaml version must use version+buildNumber")
+          source = pathlib.Path("build/app/outputs/flutter-apk/app-release.apk")
+          target = pathlib.Path("build/iq-tunnel-signed-release/IQ-Tunnel-" + match.group(1) + "-" + match.group(2) + ".apk")
+          shutil.copy2(source, target)
+          PY
+          cp build/third-party/xray-core-v26.11.9-source.tar.gz build/iq-tunnel-signed-release/
+          cp build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 build/iq-tunnel-signed-release/
+          (cd build/iq-tunnel-signed-release && sha256sum IQ-Tunnel-*.apk xray-core-v26.11.9-source.tar.gz > SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iq-tunnel-signed-release-apk
+          path: build/iq-tunnel-signed-release/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove signing material
+        if: always()
+        run: rm -f android/key.properties android/app/upload-keystore.jks
