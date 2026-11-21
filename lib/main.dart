@@ -166,7 +166,14 @@ class UpdateInfo {
 
 
 class UpdateService {
-  final http.Client _client = http.Client();
+  UpdateService({http.Client? client})
+      : _client = client ?? http.Client(),
+        _ownsClient = client == null;
+
+  static const int _maxManifestBytes = 64 * 1024;
+
+  final http.Client _client;
+  final bool _ownsClient;
 
   Future<UpdateInfo?> check() async {
     if (updateManifestUrl.isEmpty || updatePublicKeyBase64.isEmpty) {
@@ -178,27 +185,46 @@ class UpdateService {
     if (manifestUri == null || manifestUri.scheme != 'https') {
       throw const FormatException('رابط التحديثات يجب أن يستخدم HTTPS.');
     }
-    final response = await _client
-        .get(manifestUri, headers: {
-          'Accept': 'application/json',
-          'Cache-Control': 'no-cache, no-store, max-age=0',
-          'Pragma': 'no-cache',
-          'User-Agent': 'IQ-Tunnel-Updater',
-        })
-        .timeout(const Duration(seconds: 20));
-    if (response.statusCode == 404 || response.statusCode == 503) {
-      throw const UpdateUnavailableException();
-    }
+    final request = http.Request('GET', manifestUri)
+      ..followRedirects = true
+      ..headers.addAll({
+        'Accept': 'application/json',
+        'Cache-Control': 'no-cache, no-store, max-age=0',
+        'Pragma': 'no-cache',
+        'User-Agent': 'IQ-Tunnel-Updater',
+      });
+    final response = await _client.send(request).timeout(
+          const Duration(seconds: 20),
+        );
     if (response.request?.url.scheme != 'https') {
       throw const FormatException('Update manifest redirected away from HTTPS.');
     }
-    if (response.bodyBytes.length > 64 * 1024) {
-      throw const FormatException('Update manifest is larger than 64 KiB.');
+    if (response.statusCode == 404 || response.statusCode == 503) {
+      throw const UpdateUnavailableException();
     }
     if (response.statusCode != 200) {
-      throw HttpException('Update server returned HTTP ${response.statusCode}', uri: manifestUri);
+      throw HttpException(
+        'Update server returned HTTP ${response.statusCode}',
+        uri: manifestUri,
+      );
     }
-    final json = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+
+    // Enforce the manifest limit while streaming; checking bodyBytes after a
+    // normal GET would allocate the entire response before rejecting it.
+    final declaredLength = response.contentLength;
+    if (declaredLength != null && declaredLength > _maxManifestBytes) {
+      throw const FormatException('Update manifest is larger than 64 KiB.');
+    }
+    final manifestBytes = <int>[];
+    await for (final chunk in response.stream.timeout(
+      const Duration(seconds: 20),
+    )) {
+      if (manifestBytes.length + chunk.length > _maxManifestBytes) {
+        throw const FormatException('Update manifest is larger than 64 KiB.');
+      }
+      manifestBytes.addAll(chunk);
+    }
+    final json = jsonDecode(utf8.decode(manifestBytes)) as Map<String, dynamic>;
     final update = UpdateInfo.fromJson(json);
     await _verifyManifest(update);
     final package = await PackageInfo.fromPlatform();
@@ -294,7 +320,9 @@ class UpdateService {
     return file;
   }
 
-  void dispose() => _client.close();
+  void dispose() {
+    if (_ownsClient) _client.close();
+  }
 
 }
 
