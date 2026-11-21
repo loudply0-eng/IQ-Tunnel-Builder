@@ -7,7 +7,6 @@ import 'package:cryptography/cryptography.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:flutter/services.dart' show rootBundle;
-import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -443,15 +442,15 @@ class AboutAppPage extends StatelessWidget {
                 const SizedBox(height: 20),
                 _AboutFeature(
                   icon: Icons.link_rounded,
-                  title: 'استيراد ملفات وروابط VPN',
+                  title: 'إضافة روابط VPN',
                   description:
-                      'إضافة ملفات الإعدادات أو روابط الخوادم والاشتراكات المتوافقة، ثم فحصها وحفظها ضمن قائمة السيرفرات.',
+                      'إضافة روابط الخوادم والاشتراكات المتوافقة وحفظها ضمن قائمة السيرفرات.',
                 ),
                 _AboutFeature(
                   icon: Icons.shield_outlined,
                   title: 'اتصال عبر محرك Xray',
                   description:
-                      'يستخدم التطبيق محرك Xray/libXray للاتصالات المدعومة، مع قارئ إعدادات WireGuard بصيغة .conf.',
+                      'يستخدم التطبيق محرك Xray/libXray لتشغيل روابط الاتصال المدعومة.',
                 ),
                 _AboutFeature(
                   icon: Icons.lock_outline_rounded,
@@ -464,19 +463,6 @@ class AboutAppPage extends StatelessWidget {
                   title: 'تحديثات موثّقة',
                   description:
                       'يتحقق التطبيق من توقيع Ed25519 وبصمة SHA-256 قبل فتح مثبت Android. ويظل تأكيد التثبيت بيد المستخدم.',
-                ),
-                Card(
-                  child: ListTile(
-                    leading: Icon(Icons.policy_outlined, color: colors.primary),
-                    title: const Text('التراخيص مفتوحة المصدر'),
-                    subtitle: const Text('عرض إشعارات XTLS/libXray وXray-core والمكتبات المضمنة'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => showLicensePage(
-                      context: context,
-                      applicationName: 'IQ Tunnel',
-                      applicationVersion: version,
-                    ),
-                  ),
                 ),
                 const SizedBox(height: 10),
                 Card(
@@ -769,16 +755,14 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+class _HomePageState extends State<HomePage> {
   bool checking = false;
   String language = 'ar';
   bool downloading = false;
   double downloadProgress = 0;
   String status = 'جارٍ تهيئة محرك VPN...';
   String version = '...';
-  DateTime? _lastUpdateCheck;
   final EncryptedProfileStore _profileStore = EncryptedProfileStore(vault: EncryptedVault());
-  bool importingProfile = false;
   bool engineReady = false;
   bool tunnelBusy = false;
   VpnEngineStatus tunnelStatus = VpnEngineStatus.disconnected;
@@ -795,30 +779,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     _vpnEngine = widget.vpnEngine ?? LibXrayVpnEngineAdapter();
-    WidgetsBinding.instance.addObserver(this);
     _loadVersion();
     _loadLanguage();
     _loadProfiles();
     _initializeVpnEngine();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future<void>.delayed(const Duration(seconds: 3), () {
-        if (mounted && updateManifestUrl.isNotEmpty) _checkUpdates(automatic: true);
-      });
-    });
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && !checking && !downloading &&
-        (_lastUpdateCheck == null ||
-         DateTime.now().difference(_lastUpdateCheck!) > const Duration(hours: 6))) {
-      _checkUpdates(automatic: true);
-    }
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _tunnelStateSubscription?.cancel();
     _tunnelStatsSubscription?.cancel();
     super.dispose();
@@ -945,11 +913,28 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   String _formatRate(int bytesPerSecond) => '${_formatBytes(bytesPerSecond)}/s';
 
+  void _validateShareLinkInput(String payload) {
+    final value = payload.trim();
+    if (value.isEmpty) throw const FormatException('الصق رابط اتصال أولاً.');
+    final supported = RegExp(
+      r'^(?:vless|vmess|trojan|ss|socks|socks5|http|https|wireguard|wg)://',
+      caseSensitive: false,
+    );
+    final lines = value.split(RegExp(r'\r?\n')).map((line) => line.trim()).where((line) => line.isNotEmpty);
+    final hasSupportedLink = lines.any((line) => supported.hasMatch(line));
+    final compact = value.replaceAll(RegExp(r'\s+'), '');
+    final mayBeBase64Subscription = compact.length >= 16 &&
+        RegExp(r'^[A-Za-z0-9+/_=-]+$').hasMatch(compact);
+    if (!hasSupportedLink && !mayBeBase64Subscription) {
+      throw const FormatException('الرابط غير معروف. استخدم رابط VLESS أو VMess أو Trojan أو اشتراكاً مدعوماً.');
+    }
+  }
+
   Future<void> _saveProfile({required String name, required String payload, required String format}) async {
     final cleanPayload = payload.trim();
     if (cleanPayload.isEmpty) throw const FormatException('بيانات الاتصال فارغة.');
     if (!engineReady) throw StateError('محرك VPN لم يكتمل تشغيله بعد.');
-    await _vpnEngine.validateProfile(cleanPayload);
+    _validateShareLinkInput(cleanPayload);
     final profiles = await _profileStore.readAll();
     profiles.add({
       'id': DateTime.now().microsecondsSinceEpoch.toString(),
@@ -961,41 +946,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     await _profileStore.writeAll(profiles);
     if (mounted) {
       setState(() => savedProfiles = profiles);
-      _showMessage('تم فحص إعداد الاتصال وحفظه مشفّراً. تقدر هسه تتصل بيه.');
-    }
-  }
-
-  Future<void> _importConfigFile() async {
-    if (importingProfile) return;
-    if (!engineReady) {
-      _showMessage('محرك الاتصال بعده ما جاهز.');
-      return;
-    }
-    setState(() => importingProfile = true);
-    try {
-      final picked = await FilePicker.pickFile(
-        type: FileType.custom,
-        allowedExtensions: const ['json', 'txt', 'conf'],
-      );
-      if (picked == null) return;
-      final size = await picked.length();
-      if (size == null || size <= 0 || size > 2 * 1024 * 1024) {
-        throw const FormatException('الملف فارغ أو أكبر من الحد المسموح (2 MB).');
-      }
-      final bytes = await picked.readAsBytes();
-      final payload = utf8.decode(bytes, allowMalformed: false).trim();
-      final name = picked.name.replaceFirst(RegExp(r'\.[^.]+$'), '');
-      await _saveProfile(
-        name: name,
-        payload: payload,
-        format: picked.extension ?? 'text',
-      );
-    } on FormatException catch (error) {
-      if (mounted) _showMessage('ملف غير صالح: ${error.message}');
-    } catch (error) {
-      if (mounted) _showMessage('تعذر استيراد الملف: $error');
-    } finally {
-      if (mounted) setState(() => importingProfile = false);
+      _showMessage('تم حفظ الرابط بشكل مشفّر. تقدر هسه تجرب الاتصال.');
     }
   }
 
@@ -1016,9 +967,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               minLines: 4,
               maxLines: 8,
               textDirection: TextDirection.ltr,
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              enableSuggestions: false,
               decoration: const InputDecoration(
-                labelText: 'الصق رابط VPN أو نص الاشتراك',
-                hintText: 'vless://… أو vmess://…',
+                labelText: 'الصق رابط VPN أو رابط الاشتراك',
+                hintText: 'vless://… أو vmess://… أو https://…',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -1030,7 +984,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             onPressed: () => Navigator.pop(dialogContext, {
               'name': nameController.text, 'payload': payloadController.text,
             }),
-            child: const Text('فحص وحفظ'),
+            child: const Text('حفظ الرابط'),
           ),
         ],
       ),
@@ -1354,18 +1308,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: importingProfile || checking || downloading || !engineReady
-                              ? null : _importConfigFile,
-                          icon: importingProfile
-                              ? const SizedBox(width: 18, height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2))
-                              : const Icon(Icons.folder_open_rounded),
-                          label: Text(importingProfile ? 'جارٍ استيراد الملف...' : 'استيراد ملف VPN'),
-                        ),
-                      ),
                       const SizedBox(height: 10),
                       SizedBox(
                         width: double.infinity,
@@ -1410,18 +1352,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           );
                         }),
                       ],
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: checking || downloading ? null : _checkUpdates,
-                          icon: checking
-                              ? const SizedBox(width: 18, height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2))
-                              : const Icon(Icons.refresh),
-                          label: Text(checking ? _t('checking') : _t('checkUpdates')),
-                        ),
-                      ),
                       const SizedBox(height: 24),
                       Text('${_t('version')} $version',
                           style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
