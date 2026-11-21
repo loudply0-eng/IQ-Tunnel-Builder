@@ -26,7 +26,7 @@ Use GitHub's private vulnerability reporting facility from the repository Securi
 ## GitHub Actions release isolation
 
 - Routine Android CI has read-only repository permissions and must not receive production secrets.
-- Signed artifacts and production publishing are manual-only workflows on `main`.
+- Signed artifacts and production publishing are manual-only workflows on `main`; building the signed artifact additionally requires `confirm_build=true`, and publishing additionally requires `confirm_release=true`.
 - Production workflows use the `iq-tunnel-production` GitHub Environment. Configure that Environment to allow deployments from `main` only and, where a second trusted reviewer is available, require reviewer approval.
 - Production workflows intentionally use Environment-only secret names, not the legacy repository-secret names. Add these exact names under **Settings → Environments → iq-tunnel-production → Environment secrets**:
   - `IQT_PROD_ANDROID_KEYSTORE_BASE64`, `IQT_PROD_ANDROID_KEYSTORE_PASSWORD`, `IQT_PROD_ANDROID_KEY_ALIAS`, `IQT_PROD_ANDROID_KEY_PASSWORD`
