@@ -221,4 +221,3 @@ class IqTunnelXrayPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         private const val INSTALL_PERMISSION_REQUEST = 49173
     }
 }
-
