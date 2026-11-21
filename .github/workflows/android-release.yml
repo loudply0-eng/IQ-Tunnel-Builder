@@ -39,16 +39,16 @@ jobs:
           cache: true
       - name: Validate required secrets
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          ORACLE_SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
-          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
-          ORACLE_USER: ${{ secrets.ORACLE_USER }}
-          ORACLE_DEPLOY_DIR: ${{ secrets.ORACLE_DEPLOY_DIR }}
-          ORACLE_KNOWN_HOSTS: ${{ secrets.ORACLE_KNOWN_HOSTS }}
-          UPDATE_PRIVATE_KEY_BASE64: ${{ secrets.UPDATE_PRIVATE_KEY_BASE64 }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.IQT_PROD_ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.IQT_PROD_ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.IQT_PROD_ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.IQT_PROD_ANDROID_KEY_PASSWORD }}
+          ORACLE_SSH_KEY: ${{ secrets.IQT_PROD_ORACLE_SSH_KEY }}
+          ORACLE_HOST: ${{ secrets.IQT_PROD_ORACLE_HOST }}
+          ORACLE_USER: ${{ secrets.IQT_PROD_ORACLE_USER }}
+          ORACLE_DEPLOY_DIR: ${{ secrets.IQT_PROD_ORACLE_DEPLOY_DIR }}
+          ORACLE_KNOWN_HOSTS: ${{ secrets.IQT_PROD_ORACLE_KNOWN_HOSTS }}
+          UPDATE_PRIVATE_KEY_BASE64: ${{ secrets.IQT_PROD_UPDATE_PRIVATE_KEY_BASE64 }}
         run: |
           set -euo pipefail
           test -n "$ANDROID_KEYSTORE_BASE64" || { echo "Missing ANDROID_KEYSTORE_BASE64"; exit 1; }
@@ -182,10 +182,10 @@ jobs:
 
       - name: Configure permanent Android signing
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.IQT_PROD_ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.IQT_PROD_ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.IQT_PROD_ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.IQT_PROD_ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > android/app/upload-keystore.jks
@@ -232,7 +232,7 @@ jobs:
 
       - name: Verify update signing key matches app public key
         env:
-          UPDATE_PRIVATE_KEY_BASE64: ${{ secrets.UPDATE_PRIVATE_KEY_BASE64 }}
+          UPDATE_PRIVATE_KEY_BASE64: ${{ secrets.IQT_PROD_UPDATE_PRIVATE_KEY_BASE64 }}
         run: |
           set -euo pipefail
           umask 077
@@ -401,12 +401,12 @@ jobs:
 
       - name: Publish APK and signed manifest to Oracle
         env:
-          ORACLE_SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
-          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
-          ORACLE_USER: ${{ secrets.ORACLE_USER }}
-          ORACLE_DEPLOY_DIR: ${{ secrets.ORACLE_DEPLOY_DIR }}
-          ORACLE_KNOWN_HOSTS: ${{ secrets.ORACLE_KNOWN_HOSTS }}
-          UPDATE_PRIVATE_KEY_BASE64: ${{ secrets.UPDATE_PRIVATE_KEY_BASE64 }}
+          ORACLE_SSH_KEY: ${{ secrets.IQT_PROD_ORACLE_SSH_KEY }}
+          ORACLE_HOST: ${{ secrets.IQT_PROD_ORACLE_HOST }}
+          ORACLE_USER: ${{ secrets.IQT_PROD_ORACLE_USER }}
+          ORACLE_DEPLOY_DIR: ${{ secrets.IQT_PROD_ORACLE_DEPLOY_DIR }}
+          ORACLE_KNOWN_HOSTS: ${{ secrets.IQT_PROD_ORACLE_KNOWN_HOSTS }}
+          UPDATE_PRIVATE_KEY_BASE64: ${{ secrets.IQT_PROD_UPDATE_PRIVATE_KEY_BASE64 }}
           VERSION: ${{ steps.release_meta.outputs.version }}
           BUILD_NUMBER: ${{ steps.release_meta.outputs.build_number }}
         run: |
