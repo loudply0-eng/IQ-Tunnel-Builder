@@ -1,10 +1,8 @@
 name: IQ Tunnel Signed Release APK Artifact
 
 on:
-  # Manually build a signed production APK from the main branch.
-  # This workflow creates a downloadable artifact; it never publishes to Oracle.
-  push:
-    branches: [main]
+  # Signed production APKs are built only when manually dispatched from main.
+  # Public automatic CI remains available through android-ci.yml.
   workflow_dispatch:
 
 permissions:
