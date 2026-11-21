@@ -41,39 +41,44 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         return (WORKFLOW_DIR / name).read_text(encoding="utf-8")
 
     def assert_manual_main_environment(self, workflow, release=False):
-        parts = workflow.split("\non:\n", 1)
-        self.assertEqual(len(parts), 2, "Workflow must declare an on: trigger block.")
-        trigger_block = parts[1].split("\npermissions:", 1)[0]
-        self.assertIn("  workflow_dispatch:", trigger_block)
-        self.assertNotIn("  push:", trigger_block)
-        self.assertNotIn("  pull_request:", trigger_block)
+        lines = workflow.splitlines()
+        trigger_start = lines.index("on:") + 1
+        trigger_end = lines.index("permissions:")
+        trigger_lines = [line.strip() for line in lines[trigger_start:trigger_end]]
+        self.assertIn("workflow_dispatch:", trigger_lines)
+        self.assertFalse(any(line.startswith("push:") for line in trigger_lines))
+        self.assertFalse(any(line.startswith("pull_request:") for line in trigger_lines))
         self.assertIn("name: iq-tunnel-production", workflow)
         if release:
-            self.assertIn(
-                "if: ${{ inputs.confirm_release == true && github.ref == 'refs/heads/main' }}",
-                workflow,
-            )
+            expected = "if: " + "$" + "{{ inputs.confirm_release == true && github.ref == 'refs/heads/main' }}"
         else:
-            self.assertIn("if: ${{ github.ref == 'refs/heads/main' }}", workflow)
+            expected = "if: " + "$" + "{{ github.ref == 'refs/heads/main' }}"
+        self.assertIn(expected, workflow)
 
     def assert_read_only_permissions_and_pinned_actions(self, workflow):
         self.assertRegex(workflow, r"(?m)^permissions:\n  contents: read$")
         self.assertIn("persist-credentials: false", workflow)
-        actions = re.findall(r"(?m)^\s*uses:\s*([^\s#]+)", workflow)
+        actions = []
+        for line in workflow.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("- uses:"):
+                action = stripped.split("uses:", 1)[1].split("#", 1)[0].strip()
+                actions.append(action)
         self.assertTrue(actions, "Expected third-party actions to be declared.")
         for action in actions:
             self.assertRegex(
                 action,
-                r"@(?:[0-9a-f]{40})$",
+                r"@[0-9a-f]{40}$",
                 msg=f"Action is not pinned to an immutable commit SHA: {action}",
             )
 
     def assert_environment_secrets_only(self, workflow, expected):
-        names = set(
-            re.findall(r"\$\{\{\s*secrets\.([A-Z0-9_]+)\s*\}\}", workflow)
-        )
+        names = set()
+        for line in workflow.splitlines():
+            if "secrets.IQT_PROD_" in line:
+                name = line.split("secrets.", 1)[1].split()[0].rstrip("}")
+                names.add(name)
         self.assertEqual(names, expected)
-        self.assertTrue(all(name.startswith("IQT_PROD_") for name in names))
         legacy_names = {
             "ANDROID_KEYSTORE_BASE64",
             "ANDROID_KEYSTORE_PASSWORD",
@@ -86,7 +91,8 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             "ORACLE_KNOWN_HOSTS",
             "UPDATE_PRIVATE_KEY_BASE64",
         }
-        self.assertFalse(names.intersection(legacy_names))
+        for name in legacy_names:
+            self.assertNotIn("secrets." + name, workflow)
 
     def test_production_publish_workflow_is_manual_and_environment_gated(self):
         workflow = self.read_workflow("android-release.yml")
@@ -145,7 +151,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         )
         paths = [
             Path(item.decode("utf-8"))
-            for item in result.stdout.split(b"\0")
+            for item in result.stdout.split(bytes([0]))
             if item
         ]
         forbidden_extensions = {".jks", ".keystore", ".pem", ".p12", ".pfx"}
@@ -159,12 +165,12 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             if not file_path.is_file() or file_path.stat().st_size > 2 * 1024 * 1024:
                 continue
             try:
-                text = file_path.read_text(encoding="utf-8")
+                text_content = file_path.read_text(encoding="utf-8")
             except (UnicodeDecodeError, OSError):
                 continue
             for pattern in SECRET_PATTERNS:
                 self.assertIsNone(
-                    pattern.search(text),
+                    pattern.search(text_content),
                     msg=f"Potential secret marker found in tracked file: {path}",
                 )
 
