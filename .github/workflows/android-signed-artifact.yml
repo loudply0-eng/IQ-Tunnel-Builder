@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: iq-tunnel-signed-apk-artifact
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   signed-release-apk:
@@ -21,6 +21,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
         with:
           ref: main
 
