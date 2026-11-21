@@ -140,7 +140,7 @@ jobs:
           UPDATE_MANIFEST_URL: https://mahmoudaljuorany.store/updates/iq-tunnel/manifest.json
           UPDATE_PUBLIC_KEY: 4eOsYpXniRBp1ZTJjq5c3HbDW8tCvWbv1fr5PLVl+sk=
         run: flutter build apk --debug --dart-define=UPDATE_MANIFEST_URL="$UPDATE_MANIFEST_URL" --dart-define=UPDATE_PUBLIC_KEY="$UPDATE_PUBLIC_KEY"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: iq-tunnel-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
