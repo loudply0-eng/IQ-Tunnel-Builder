@@ -131,6 +131,13 @@ jobs:
           p.write_text(s)
           PY
       - run: flutter pub get
+      - name: Upload resolved Pub lockfile for reproducible dependency pinning
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: iq-tunnel-pub-lockfile-baseline
+          path: pubspec.lock
+          if-no-files-found: error
+          retention-days: 7
       - run: flutter analyze --no-fatal-infos
       - run: flutter test
       - name: Build debug APK
