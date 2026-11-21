@@ -40,7 +40,9 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
     def read_workflow(self, name):
         return (WORKFLOW_DIR / name).read_text(encoding="utf-8")
 
-    def assert_manual_main_environment(self, workflow, release=False):
+    def assert_manual_main_environment(
+        self, workflow, release=False, confirmation_input=None
+    ):
         lines = workflow.splitlines()
         trigger_start = lines.index("on:") + 1
         trigger_end = lines.index("permissions:")
@@ -51,9 +53,19 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("name: iq-tunnel-production", workflow)
         if release:
             expected = "if: " + "$" + "{{ inputs.confirm_release == true && github.ref == 'refs/heads/main' }}"
+            confirmation_input = "confirm_release"
+        elif confirmation_input:
+            expected = "if: " + "$" + "{{ inputs." + confirmation_input + " == true && github.ref == 'refs/heads/main' }}"
         else:
             expected = "if: " + "$" + "{{ github.ref == 'refs/heads/main' }}"
         self.assertIn(expected, workflow)
+        if confirmation_input:
+            self.assertRegex(
+                workflow,
+                r"(?s)workflow_dispatch:\s+inputs:\s+"
+                + re.escape(confirmation_input)
+                + r":\s+description:.*?\s+required: true\s+type: boolean\s+default: false",
+            )
 
     def assert_read_only_permissions_and_pinned_actions(self, workflow):
         self.assertRegex(workflow, r"(?m)^permissions:\n  contents: read$")
@@ -102,11 +114,14 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("cancel-in-progress: false", workflow)
         self.assertIn("Remove signing material", workflow)
 
-    def test_signed_artifact_workflow_is_manual_and_environment_gated(self):
+    def test_signed_artifact_workflow_is_manual_confirmed_and_environment_gated(self):
         workflow = self.read_workflow("android-signed-artifact.yml")
-        self.assert_manual_main_environment(workflow)
+        self.assert_manual_main_environment(
+            workflow, confirmation_input="confirm_build"
+        )
         self.assert_read_only_permissions_and_pinned_actions(workflow)
         self.assert_environment_secrets_only(workflow, SIGNED_ARTIFACT_SECRET_NAMES)
+        self.assertIn("cancel-in-progress: false", workflow)
 
     def test_routine_ci_never_receives_production_secrets(self):
         workflow = self.read_workflow("android-ci.yml")
