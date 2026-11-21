@@ -8,7 +8,7 @@ This repository is the intentionally public build mirror for the IQ Tunnel Andro
 - **IQ Tunnel Signed Release APK Artifact** is manual-only and runs from `main`. It creates a permanent-key-signed release APK artifact; it does not publish to the Oracle update server.
 - **IQ Tunnel Public Builder — Signed Release** is a separate manual-only production workflow. It requires the explicit `confirm_release` input and the `main` branch, then builds, signs, and publishes an APK plus an Ed25519-signed update manifest to the configured Oracle server.
 
-The two signed workflows use the GitHub Actions Environment named `iq-tunnel-production`. Before relying on it as a security boundary, the repository owner must configure that Environment to allow deployments from `main` only, add required reviewers where possible, move all release/signing/deployment secrets into that Environment, and remove duplicate repository-level copies. Merely referencing an Environment in YAML does not enable its protection rules.
+The two signed workflows use the GitHub Actions Environment named `iq-tunnel-production`. Before relying on it as a security boundary, the repository owner must configure that Environment to allow deployments from `main` only, add required reviewers where possible, and add the exact `IQT_PROD_*` secrets listed in [SECURITY.md](SECURITY.md). Production workflows intentionally ignore the legacy repository-secret names and fail closed until those Environment secrets exist; remove the old repository-level copies after verifying the migration. Merely referencing an Environment in YAML does not enable its protection rules.
 
 ## Dependency integrity
 
