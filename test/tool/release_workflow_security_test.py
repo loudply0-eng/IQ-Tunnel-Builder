@@ -28,11 +28,11 @@ SIGNED_ARTIFACT_SECRET_NAMES = {
 
 SECRET_PATTERNS = (
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
-    re.compile(r"\\bAKIA[0-9A-Z]{16}\\b"),
-    re.compile(r"\\bgh[pousr]_[A-Za-z0-9_]{30,}\\b"),
-    re.compile(r"\\bgithub_pat_[A-Za-z0-9_]{30,}\\b"),
-    re.compile(r"\\bxox[baprs]-[A-Za-z0-9-]{20,}\\b"),
-    re.compile(r"\\bAIza[0-9A-Za-z_-]{30,}\\b"),
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{30,}\b"),
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{30,}\b"),
+    re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b"),
+    re.compile(r"\bAIza[0-9A-Za-z_-]{30,}\b"),
 )
 
 
@@ -41,43 +41,39 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         return (WORKFLOW_DIR / name).read_text(encoding="utf-8")
 
     def assert_manual_main_environment(self, workflow, release=False):
-        lines = workflow.splitlines()
-        trigger_start = lines.index("on:") + 1
-        trigger_end = lines.index("permissions:")
-        trigger_lines = [line.strip() for line in lines[trigger_start:trigger_end]]
-        self.assertIn("workflow_dispatch:", trigger_lines)
-        self.assertFalse(any(line.startswith("push:") for line in trigger_lines))
-        self.assertFalse(any(line.startswith("pull_request:") for line in trigger_lines))
+        parts = workflow.split("\non:\n", 1)
+        self.assertEqual(len(parts), 2, "Workflow must declare an on: trigger block.")
+        trigger_block = parts[1].split("\npermissions:", 1)[0]
+        self.assertIn("  workflow_dispatch:", trigger_block)
+        self.assertNotIn("  push:", trigger_block)
+        self.assertNotIn("  pull_request:", trigger_block)
         self.assertIn("name: iq-tunnel-production", workflow)
         if release:
-            expected = "if: " + "$" + "{{ inputs.confirm_release == true && github.ref == 'refs/heads/main' }}"
+            self.assertIn(
+                "if: ${{ inputs.confirm_release == true && github.ref == 'refs/heads/main' }}",
+                workflow,
+            )
         else:
-            expected = "if: " + "$" + "{{ github.ref == 'refs/heads/main' }}"
-        self.assertIn(expected, workflow)
+            self.assertIn("if: ${{ github.ref == 'refs/heads/main' }}", workflow)
 
     def assert_read_only_permissions_and_pinned_actions(self, workflow):
-        self.assertIn("permissions:\\n  contents: read", workflow)
+        self.assertRegex(workflow, r"(?m)^permissions:\n  contents: read$")
         self.assertIn("persist-credentials: false", workflow)
-        actions = []
-        for line in workflow.splitlines():
-            if line.strip().startswith("uses:"):
-                action = line.split("uses:", 1)[1].split("#", 1)[0].strip()
-                actions.append(action)
+        actions = re.findall(r"(?m)^\s*uses:\s*([^\s#]+)", workflow)
         self.assertTrue(actions, "Expected third-party actions to be declared.")
         for action in actions:
             self.assertRegex(
                 action,
-                r"@[0-9a-f]{40}$",
+                r"@(?:[0-9a-f]{40})$",
                 msg=f"Action is not pinned to an immutable commit SHA: {action}",
             )
 
     def assert_environment_secrets_only(self, workflow, expected):
-        names = {
-            line.split("secrets.", 1)[1].split()[0]
-            for line in workflow.splitlines()
-            if "secrets.IQT_PROD_" in line
-        }
+        names = set(
+            re.findall(r"\$\{\{\s*secrets\.([A-Z0-9_]+)\s*\}\}", workflow)
+        )
         self.assertEqual(names, expected)
+        self.assertTrue(all(name.startswith("IQT_PROD_") for name in names))
         legacy_names = {
             "ANDROID_KEYSTORE_BASE64",
             "ANDROID_KEYSTORE_PASSWORD",
@@ -90,8 +86,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             "ORACLE_KNOWN_HOSTS",
             "UPDATE_PRIVATE_KEY_BASE64",
         }
-        for name in legacy_names:
-            self.assertNotIn(f"secrets.{name}", workflow)
+        self.assertFalse(names.intersection(legacy_names))
 
     def test_production_publish_workflow_is_manual_and_environment_gated(self):
         workflow = self.read_workflow("android-release.yml")
@@ -109,7 +104,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
     def test_routine_ci_never_receives_production_secrets(self):
         workflow = self.read_workflow("android-ci.yml")
-        self.assertIn("permissions:\\n  contents: read", workflow)
+        self.assertRegex(workflow, r"(?m)^permissions:\n  contents: read$")
         self.assertNotIn("secrets.", workflow)
         self.assertIn("persist-credentials: false", workflow)
 
@@ -129,7 +124,16 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
     def test_repository_ignores_common_secret_files(self):
         ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
-        for entry in ("*.jks", "*.keystore", "key.properties", ".env", "*.pem", "*.p12", "*.pfx", "*.key"):
+        for entry in (
+            "*.jks",
+            "*.keystore",
+            "key.properties",
+            ".env",
+            "*.pem",
+            "*.p12",
+            "*.pfx",
+            "*.key",
+        ):
             self.assertIn(entry, ignored)
 
     def test_tracked_files_contain_no_common_private_key_or_token_markers(self):
@@ -139,7 +143,11 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             check=True,
             stdout=subprocess.PIPE,
         )
-        paths = [Path(item.decode("utf-8")) for item in result.stdout.split(bytes([0])) if item]
+        paths = [
+            Path(item.decode("utf-8"))
+            for item in result.stdout.split(b"\0")
+            if item
+        ]
         forbidden_extensions = {".jks", ".keystore", ".pem", ".p12", ".pfx"}
         for path in paths:
             self.assertNotIn(
