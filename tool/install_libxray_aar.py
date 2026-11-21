@@ -76,4 +76,3 @@ if __name__ == "__main__":
             "usage: install_libxray_aar.py PATH_TO_LIBXRAY_AAR ANDROID_PLUGIN_MODULE"
         )
     install(Path(sys.argv[1]), Path(sys.argv[2]))
-
