@@ -92,6 +92,7 @@ void main() {
         address: 'http://192.168.1.1',
         username: 'root',
         password: 'not-logged',
+        allowInsecureHttp: true,
       );
       expect(snapshot.hostname, 'OpenWrt');
       expect(snapshot.model, 'Test Router');
@@ -121,6 +122,44 @@ void main() {
         throwsA(isA<OpenWrtException>()),
       );
       expect(sent, isFalse);
+    });
+
+    test('requires explicit opt-in before sending credentials over local HTTP',
+        () async {
+      var sent = false;
+      final client = OpenWrtClient(
+        client: MockClient((request) async {
+          sent = true;
+          return http.Response(jsonEncode({'result': [6]}), 200);
+        }),
+      );
+
+      await expectLater(
+        client.inspect(
+          address: 'http://192.168.1.1',
+          username: 'root',
+          password: 'secret',
+        ),
+        throwsA(
+          isA<OpenWrtException>().having(
+            (error) => error.message,
+            'message',
+            contains('تأكيد'),
+          ),
+        ),
+      );
+      expect(sent, isFalse);
+
+      await expectLater(
+        client.inspect(
+          address: 'http://192.168.1.1',
+          username: 'root',
+          password: 'secret',
+          allowInsecureHttp: true,
+        ),
+        throwsA(isA<OpenWrtException>()),
+      );
+      expect(sent, isTrue);
     });
 
     test('does not trust local-looking DNS suffixes for plain HTTP', () async {
@@ -185,6 +224,7 @@ void main() {
           address: 'http://192.168.1.1',
           username: 'root',
           password: 'wrong',
+          allowInsecureHttp: true,
         ),
         throwsA(
           isA<OpenWrtException>().having(
