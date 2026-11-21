@@ -133,4 +133,3 @@ Endpoint = wg.example.com:51820
     });
   });
 }
-
