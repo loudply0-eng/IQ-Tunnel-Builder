@@ -758,6 +758,7 @@ class _HomePageState extends State<HomePage> {
   String status = 'جارٍ تهيئة محرك VPN...';
   String version = '...';
   final EncryptedProfileStore _profileStore = EncryptedProfileStore(vault: EncryptedVault());
+  late final Future<void> _profilesLoadFuture;
   bool engineReady = false;
   bool tunnelBusy = false;
   VpnEngineStatus tunnelStatus = VpnEngineStatus.disconnected;
@@ -775,7 +776,7 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _loadVersion();
     _loadLanguage();
-    _loadProfiles();
+    _profilesLoadFuture = _loadProfiles();
     _initializeVpnEngine();
   }
 
@@ -928,6 +929,9 @@ class _HomePageState extends State<HomePage> {
     final cleanPayload = payload.trim();
     if (cleanPayload.isEmpty) throw const FormatException('بيانات الاتصال فارغة.');
     _validateShareLinkInput(cleanPayload);
+    // Wait for the initial encrypted-vault read so key creation cannot race
+    // between startup loading and an early profile save.
+    await _profilesLoadFuture;
     final profiles = await _profileStore.readAll();
     profiles.add({
       'id': DateTime.now().microsecondsSinceEpoch.toString(),
