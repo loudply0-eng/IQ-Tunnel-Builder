@@ -39,25 +39,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('IQ Tunnel'), findsWidgets);
-    expect(find.text('فحص تحديثات التطبيق'), findsOneWidget);
-    expect(find.text('استيراد ملف VPN'), findsOneWidget);
+    expect(find.text('فحص تحديثات التطبيق'), findsNothing);
+    expect(find.text('استيراد ملف VPN'), findsNothing);
     expect(find.text('إضافة رابط أو اشتراك VPN'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('about page exposes the open-source licenses page', (tester) async {
+  testWidgets('about page does not expose a separate licenses menu entry', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: AboutAppPage(version: '0.1.6+7')),
     );
 
     expect(find.text('حول IQ Tunnel'), findsOneWidget);
-    for (var attempt = 0;
-        attempt < 4 && find.text('التراخيص مفتوحة المصدر').evaluate().isEmpty;
-        attempt++) {
-      await tester.drag(find.byType(ListView), const Offset(0, -560));
-      await tester.pumpAndSettle();
-    }
-    expect(find.text('التراخيص مفتوحة المصدر'), findsOneWidget);
+    expect(find.text('التراخيص مفتوحة المصدر'), findsNothing);
   });
 }
