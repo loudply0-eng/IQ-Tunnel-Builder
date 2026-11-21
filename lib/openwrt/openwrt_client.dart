@@ -253,10 +253,7 @@ class OpenWrtClient {
 
   bool _isPrivateOrLocalHost(String host) {
     final normalized = host.toLowerCase();
-    if (normalized == 'localhost' ||
-        normalized.endsWith('.lan') ||
-        normalized.endsWith('.local') ||
-        normalized.endsWith('.home.arpa')) {
+    if (normalized == 'localhost') {
       return true;
     }
     final address = InternetAddress.tryParse(host);
