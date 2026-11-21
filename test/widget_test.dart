@@ -13,6 +13,11 @@ void main() {
 
     await tester.tap(find.byTooltip('الإعدادات'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('فحص تحديثات التطبيق'),
+      400,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('فحص تحديثات التطبيق'), findsOneWidget);
   });
 
@@ -22,6 +27,11 @@ void main() {
     );
 
     expect(find.text('حول IQ Tunnel'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('تحديثات موثّقة'),
+      400,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('تحديثات موثّقة'), findsOneWidget);
     expect(find.text('التراخيص مفتوحة المصدر'), findsNothing);
   });
