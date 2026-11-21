@@ -55,6 +55,7 @@ Use GitHub's private vulnerability reporting facility from the repository Securi
 - Never expose the router's ubus endpoint to the public internet.
 - HTTPS certificate validation must stay enabled. Do not add permissive certificate callbacks or accept all certificates.
 - HTTP credentials are transmitted in clear text. The app must require a fresh, explicit user confirmation before each HTTP attempt and must restrict HTTP to literal private/local IP addresses or localhost. Public addresses and arbitrary local-looking DNS names must remain blocked.
+- The generated Android manifest currently enables app-level clear-text compatibility to support local OpenWrt routers. This is broader than a host-specific Android network policy, so every other network client must enforce HTTPS itself. Do not add new clear-text endpoints or bypass the OpenWrt client's host and consent checks.
 - The HTTP confirmation is a risk acknowledgement, not encryption. Users should only accept it on a trusted local network.
 
 ## Third-party components and testing
