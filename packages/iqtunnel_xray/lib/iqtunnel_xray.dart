@@ -33,4 +33,3 @@ class IqTunnelXray {
             (event) => Map<String, Object?>.from(event as Map),
           );
 }
-
