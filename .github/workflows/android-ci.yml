@@ -130,6 +130,8 @@ jobs:
               s = s.replace("<application", '<application android:usesCleartextTraffic="true"', 1)
           p.write_text(s)
           PY
+      - name: Repair cached Pub packages before integrity enforcement
+        run: dart pub cache repair
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze --no-fatal-infos
       - run: flutter test

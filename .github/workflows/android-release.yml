@@ -244,6 +244,7 @@ jobs:
 
       - name: Resolve dependencies, analyze and test
         run: |
+          dart pub cache repair
           flutter pub get --enforce-lockfile
           flutter analyze --no-fatal-infos
           flutter test
