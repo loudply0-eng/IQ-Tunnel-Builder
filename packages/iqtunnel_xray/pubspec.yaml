@@ -17,4 +17,3 @@ flutter:
       android:
         package: com.iqtunnel.xray
         pluginClass: IqTunnelXrayPlugin
-
