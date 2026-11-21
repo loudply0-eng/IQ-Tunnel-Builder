@@ -43,9 +43,7 @@ void main() {
 }
 
 class IqTunnelApp extends StatefulWidget {
-  const IqTunnelApp({super.key, this.vpnEngine});
-
-  final VpnEngine? vpnEngine;
+  const IqTunnelApp({super.key});
 
   @override
   State<IqTunnelApp> createState() => _IqTunnelAppState();
@@ -100,7 +98,6 @@ class _IqTunnelAppState extends State<IqTunnelApp> {
         darkTheme: buildIqTunnelTheme(Brightness.dark, _accentColor),
         themeMode: _themeMode,
         home: HomePage(
-          vpnEngine: widget.vpnEngine,
           themeMode: _themeMode,
           accentColor: _accentColor,
           onThemeModeChanged: _setThemeMode,
@@ -738,14 +735,12 @@ class _SettingsPageState extends State<SettingsPage> {
 class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
-    this.vpnEngine,
     required this.themeMode,
     required this.accentColor,
     required this.onThemeModeChanged,
     required this.onAccentColorChanged,
   });
 
-  final VpnEngine? vpnEngine;
   final ThemeMode themeMode;
   final Color accentColor;
   final ValueChanged<ThemeMode> onThemeModeChanged;
@@ -766,7 +761,7 @@ class _HomePageState extends State<HomePage> {
   bool engineReady = false;
   bool tunnelBusy = false;
   VpnEngineStatus tunnelStatus = VpnEngineStatus.disconnected;
-  late final VpnEngine _vpnEngine;
+  final VpnEngine _vpnEngine = LibXrayVpnEngineAdapter();
   String? tunnelError;
   List<Map<String, dynamic>> savedProfiles = <Map<String, dynamic>>[];
   String? activeProfileId;
@@ -778,7 +773,6 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _vpnEngine = widget.vpnEngine ?? LibXrayVpnEngineAdapter();
     _loadVersion();
     _loadLanguage();
     _loadProfiles();
@@ -933,7 +927,6 @@ class _HomePageState extends State<HomePage> {
   Future<void> _saveProfile({required String name, required String payload, required String format}) async {
     final cleanPayload = payload.trim();
     if (cleanPayload.isEmpty) throw const FormatException('بيانات الاتصال فارغة.');
-    if (!engineReady) throw StateError('محرك VPN لم يكتمل تشغيله بعد.');
     _validateShareLinkInput(cleanPayload);
     final profiles = await _profileStore.readAll();
     profiles.add({
