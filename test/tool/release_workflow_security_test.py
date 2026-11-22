@@ -230,5 +230,22 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         )
 
 
+    def test_release_documentation_matches_sftp_deploy_credentials(self):
+        security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+        automatic = (ROOT / "docs" / "AUTOMATIC_RELEASES.md").read_text(
+            encoding="utf-8"
+        )
+
+        for document in (security, automatic):
+            self.assertIn("IQT_PROD_SOURCE_DEPLOY_KEY", document)
+            self.assertNotIn("IQT_PROD_SOURCE_READ_TOKEN", document)
+
+        self.assertIn("iqt-deploy", security)
+        self.assertIn("/incoming", security)
+        self.assertIn("iqt-deploy", automatic)
+        self.assertIn("/incoming", automatic)
+        self.assertNotIn("IQT_PROD_ORACLE_DEPLOY_DIR", security)
+
+
 if __name__ == "__main__":
     unittest.main()
