@@ -551,12 +551,12 @@ jobs:
 
           # Require OpenSSH's POSIX rename extension before any upload. The normal
           # sftp "rename" command uses this extension when the server advertises it.
-          sftp -vv -b - \\
-            -i ~/.ssh/id_ed25519 \\
-            -oBatchMode=yes \\
-            -oStrictHostKeyChecking=yes \\
-            -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \\
-            -oIdentitiesOnly=yes \\
+          sftp -vv -b - \
+            -i ~/.ssh/id_ed25519 \
+            -oBatchMode=yes \
+            -oStrictHostKeyChecking=yes \
+            -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -oIdentitiesOnly=yes \
             "$ORACLE_USER@$ORACLE_HOST" 2>/tmp/iqt-sftp-capabilities.log <<'SFTP_PROBE'
           pwd
           SFTP_PROBE
