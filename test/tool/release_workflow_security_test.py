@@ -142,6 +142,23 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn("secrets.", workflow)
         self.assertIn("persist-credentials: false", workflow)
 
+    def test_all_public_workflows_pin_actions_and_disable_nested_flutter_cache(self):
+        workflow_names = (
+            "android-ci.yml",
+            "android-release.yml",
+            "android-signed-artifact.yml",
+        )
+        for name in workflow_names:
+            workflow = self.read_workflow(name)
+            self.assert_read_only_permissions_and_pinned_actions(workflow)
+            lines = workflow.splitlines()
+            flutter_index = next(
+                i for i, line in enumerate(lines)
+                if "subosito/flutter-action@" in line
+            )
+            flutter_block = "\\n".join(lines[flutter_index:flutter_index + 8])
+            self.assertIn("cache: false", flutter_block)
+
     def test_openwrt_http_requires_one_time_opt_in_and_private_host(self):
         client = (ROOT / "lib" / "openwrt" / "openwrt_client.dart").read_text(
             encoding="utf-8"
