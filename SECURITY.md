@@ -29,6 +29,7 @@ Use GitHub's private vulnerability reporting facility from the repository Securi
 - Signed artifacts and production publishing are manual-only workflows on `main`; building the signed artifact additionally requires `confirm_build=true`, and publishing additionally requires `confirm_release=true`.
 - Production workflows use the `iq-tunnel-production` GitHub Environment. Configure that Environment to allow deployments from `main` only and, where a second trusted reviewer is available, require reviewer approval.
 - Production workflows intentionally use Environment-only secret names, not the legacy repository-secret names. Add these exact names under **Settings → Environments → iq-tunnel-production → Environment secrets**:
+  - `IQT_PROD_SOURCE_READ_TOKEN` — fine-grained token restricted to the private `loudply0-eng/IQ-Tunnel` repository with Contents: Read-only.
   - `IQT_PROD_ANDROID_KEYSTORE_BASE64`, `IQT_PROD_ANDROID_KEYSTORE_PASSWORD`, `IQT_PROD_ANDROID_KEY_ALIAS`, `IQT_PROD_ANDROID_KEY_PASSWORD`
   - `IQT_PROD_ORACLE_SSH_KEY`, `IQT_PROD_ORACLE_HOST`, `IQT_PROD_ORACLE_USER`, `IQT_PROD_ORACLE_DEPLOY_DIR`, `IQT_PROD_ORACLE_KNOWN_HOSTS`
   - `IQT_PROD_UPDATE_PRIVATE_KEY_BASE64`
