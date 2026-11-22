@@ -18,6 +18,7 @@ RELEASE_SECRET_NAMES = {
     "IQT_PROD_ORACLE_DEPLOY_DIR",
     "IQT_PROD_ORACLE_KNOWN_HOSTS",
     "IQT_PROD_UPDATE_PRIVATE_KEY_BASE64",
+    "IQT_PROD_SOURCE_READ_TOKEN",
 }
 SIGNED_ARTIFACT_SECRET_NAMES = {
     "IQT_PROD_ANDROID_KEYSTORE_BASE64",
@@ -113,6 +114,15 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assert_environment_secrets_only(workflow, RELEASE_SECRET_NAMES)
         self.assertIn("cancel-in-progress: false", workflow)
         self.assertIn("Remove signing material", workflow)
+        self.assertIn("source_ref:", workflow)
+        self.assertIn("repository: loudply0-eng/IQ-Tunnel", workflow)
+        self.assertIn("path: .iqt-private-source", workflow)
+        self.assertIn("rsync -a --delete", workflow)
+        self.assertIn("SOURCE_READ_TOKEN", workflow)
+        self.assertIn("path: .iqt-private-main", workflow)
+        self.assertIn("fetch-depth: 0", workflow)
+        self.assertIn("merge-base --is-ancestor", workflow)
+        self.assertIn("not an ancestor of private main", workflow)
 
     def test_signed_artifact_workflow_is_manual_confirmed_and_environment_gated(self):
         workflow = self.read_workflow("android-signed-artifact.yml")

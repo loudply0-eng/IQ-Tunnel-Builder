@@ -6,7 +6,7 @@ This repository is the intentionally public build mirror for the IQ Tunnel Andro
 
 - **IQ Tunnel Android CI** runs on pushes and pull requests. It runs the native libXray build checks, dependency integrity checks, Flutter analysis, tests, and a debug APK build. Its job has read-only repository permissions and does not receive production secrets.
 - **IQ Tunnel Signed Release APK Artifact** is manual-only and runs from `main`. It creates a permanent-key-signed release APK artifact; it does not publish to the Oracle update server.
-- **IQ Tunnel Public Builder — Signed Release** is a separate manual-only production workflow. It requires the explicit `confirm_release` input and the `main` branch, then builds, signs, and publishes an APK plus an Ed25519-signed update manifest to the configured Oracle server.
+- **IQ Tunnel Public Builder — Signed Release** remains manually gated. A private-source dispatcher can request a release after an app-related push to private `main`, but only after the owner explicitly enables `IQT_AUTO_RELEASE_ENABLED` and configures a trusted required reviewer on the production Environment. It checks out an exact private source commit and verifies that commit is an ancestor of private `main` before building, signing, and publishing.
 
 The two signed workflows use the GitHub Actions Environment named `iq-tunnel-production`. Before relying on it as a security boundary, the repository owner must configure that Environment to allow deployments from `main` only, add required reviewers where possible, and add the exact `IQT_PROD_*` secrets listed in [SECURITY.md](SECURITY.md). Production workflows intentionally ignore the legacy repository-secret names and fail closed until those Environment secrets exist; remove the old repository-level copies after verifying the migration. Merely referencing an Environment in YAML does not enable its protection rules.
 
@@ -25,3 +25,10 @@ GitHub's Dependency Graph, Dependabot alerts, and Dependency Review must be enab
 - Public source visibility cannot be prevented: anyone can read and copy code placed in this repository.
 
 See [SECURITY.md](SECURITY.md) for the security policy and the owner-only GitHub settings that must be completed.
+
+
+## Automatic release from private source
+
+New releases are built from the private `loudply0-eng/IQ-Tunnel` repository at an exact branch or commit SHA. The private source repository dispatches the public builder workflow when an app-related change lands on `main`. See [docs/AUTOMATIC_RELEASES.md](docs/AUTOMATIC_RELEASES.md) for the separate read-only source token and dispatch token setup.
+
+The builder's existing public Git history and current source mirror are not erased by this workflow change. The release job uses the private source checkout for its actual build workspace.
