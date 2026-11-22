@@ -119,6 +119,10 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("path: .iqt-private-source", workflow)
         self.assertIn("rsync -a --delete", workflow)
         self.assertIn("SOURCE_READ_TOKEN", workflow)
+        self.assertIn("path: .iqt-private-main", workflow)
+        self.assertIn("fetch-depth: 0", workflow)
+        self.assertIn("merge-base --is-ancestor", workflow)
+        self.assertIn("not an ancestor of private main", workflow)
 
     def test_signed_artifact_workflow_is_manual_confirmed_and_environment_gated(self):
         workflow = self.read_workflow("android-signed-artifact.yml")
