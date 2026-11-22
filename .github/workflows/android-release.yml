@@ -530,8 +530,8 @@ jobs:
           build = os.environ["BUILD_NUMBER"].strip()
           if not re.fullmatch(r"[A-Za-z0-9.-]+", host):
               raise SystemExit("ORACLE_HOST contains unsafe characters.")
-          if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*", user):
-              raise SystemExit("ORACLE_USER contains unsafe characters.")
+          if user != "iqt-deploy":
+              raise SystemExit("ORACLE_USER must be the dedicated SFTP-only iqt-deploy account.")
           if not re.fullmatch(r"[0-9A-Za-z.+-]+", version):
               raise SystemExit("VERSION contains unsafe characters.")
           if not re.fullmatch(r"[0-9]+", build):
@@ -555,6 +555,8 @@ jobs:
           apk = "build/app/outputs/flutter-apk/app-release.apk"
           with open(apk, "rb") as f:
               digest = hashlib.sha256(f.read()).hexdigest()
+          with open("/tmp/iq-update-apk.sha256", "w", encoding="ascii") as f:
+              f.write(digest)
           manifest = {
               "version": os.environ["VERSION"],
               "build_number": int(os.environ["BUILD_NUMBER"]),
@@ -598,7 +600,14 @@ jobs:
           SFTP_BATCH
 
           PUBLIC_BASE="https://mahmoudaljuorany.store/updates/iq-tunnel"
-          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/iq-tunnel-$VERSION-$BUILD_NUMBER.apk" >/dev/null
+          APK_URL="$PUBLIC_BASE/iq-tunnel-$VERSION-$BUILD_NUMBER.apk"
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 "$APK_URL" -o /tmp/iq-update-apk-published.apk
+          EXPECTED_APK_SHA256="$(cat /tmp/iq-update-apk.sha256)"
+          ACTUAL_APK_SHA256="$(sha256sum /tmp/iq-update-apk-published.apk | awk '{print $1}')"
+          test "$ACTUAL_APK_SHA256" = "$EXPECTED_APK_SHA256" || {
+            echo "Published APK SHA-256 does not match the locally built APK."
+            exit 1
+          }
           curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz" >/dev/null
           curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz.sha256" >/dev/null
           curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' "$PUBLIC_BASE/manifest.json" -o /tmp/iq-update-manifest-published.json
@@ -606,4 +615,4 @@ jobs:
 
       - name: Remove signing material
         if: always()
-        run: rm -f android/key.properties android/app/upload-keystore.jks ~/.ssh/id_ed25519 /tmp/iq-update-private.pem /tmp/iq-update-public.pem /tmp/iq-update-payload.json /tmp/iq-update-manifest-base.json /tmp/iq-update-signature.bin /tmp/iq-update-manifest.json
+        run: rm -f android/key.properties android/app/upload-keystore.jks ~/.ssh/id_ed25519 /tmp/iq-update-private.pem /tmp/iq-update-public.pem /tmp/iq-update-payload.json /tmp/iq-update-manifest-base.json /tmp/iq-update-signature.bin /tmp/iq-update-manifest.json /tmp/iq-update-apk.sha256 /tmp/iq-update-apk-published.apk
