@@ -4,7 +4,7 @@
 
 In `loudply0-eng/IQ-Tunnel-Builder`, open **Settings → Environments → iq-tunnel-production**.
 
-Keep deployment branches restricted to `main`. Add this additional Environment secret:
+Keep deployment branches restricted to `main`. Add this Environment secret:
 
 | Name | Value and scope |
 |---|---|
@@ -12,7 +12,7 @@ Keep deployment branches restricted to `main`. Add this additional Environment s
 
 Do not grant this token write access. It is separate from Android signing, Ed25519 update signing and Oracle SSH credentials.
 
-If the Environment has required reviewers, an automatic release waits for approval before it can use production secrets. For fully unattended release, the owner must intentionally decide whether to remove required reviewers while retaining the main-only deployment branch restriction. The workflow does not bypass Environment approvals.
+**Before enabling automatic releases, add at least one trusted required reviewer to this Environment.** The dispatcher deliberately has an opt-in switch and must remain disabled until the approval gate is configured. Do not enable unattended production publishing merely to make builds automatic.
 
 ## 2. Private source dispatcher
 
@@ -20,31 +20,39 @@ In `loudply0-eng/IQ-Tunnel`, open **Settings → Secrets and variables → Actio
 
 | Name | Value and scope |
 |---|---|
-| `IQT_BUILDER_DISPATCH_TOKEN` | Separate fine-grained PAT restricted to `loudply0-eng/IQ-Tunnel-Builder` only, with Actions: Read and write. Do not grant Contents: Write. |
+| `IQT_BUILDER_DISPATCH_TOKEN` | Fine-grained PAT restricted to `loudply0-eng/IQ-Tunnel-Builder` only, with Actions: Read and write. Do not grant Contents: Write. |
 
-This token is used only to start the public builder workflow. The private source dispatcher does not receive Android signing, OTA signing, or Oracle credentials.
+Then add a repository Actions variable:
+
+| Name | Initial value |
+|---|---|
+| `IQT_AUTO_RELEASE_ENABLED` | `false` or leave unset |
+
+The token only requests a workflow dispatch. It cannot read or write source contents and it is not given any Android signing, OTA signing, or Oracle credentials.
 
 ## 3. Automatic release behavior
 
-When an app-related change lands on private source `main`:
+The private dispatcher listens for app-related changes on private `main`. It is **disabled by default**. It runs only when `IQT_AUTO_RELEASE_ENABLED=true`.
 
-1. The private source dispatcher starts the public builder release workflow.
-2. The builder checks out the exact private source commit SHA.
-3. It builds the pinned libXray Android bridge, runs analysis/tests, signs the APK and verifies the permanent Android signing certificate.
-4. It signs the update manifest with the dedicated Ed25519 private key.
-5. It publishes the APK first and the signed manifest last.
-6. The installed app checks the signed HTTPS manifest on launch and also exposes a manual update check in Settings.
+When enabled, it asks the public builder to release the exact source commit SHA. The public builder:
+1. Checks out the private source commit and the complete private `main` history.
+2. Rejects the selected commit unless it is an ancestor of private `main`.
+3. Builds the pinned libXray Android bridge and runs analysis/tests.
+4. Signs the APK with the permanent Android key and verifies its approved certificate fingerprint.
+5. Signs the update manifest with the dedicated Ed25519 private key.
+6. Publishes the APK first and the signed manifest last.
 
-The app verifies the Ed25519 metadata and SHA-256 APK digest before handing the APK to Android's installer. Android still requires the user to approve installation.
+The builder Environment approval must remain active. Android installation still requires the user's approval; silent installation is not supported.
 
 ## 4. Manual recovery
 
-The builder workflow remains available for manual recovery. Run **Actions → IQ Tunnel Public Builder — Signed Release** on builder branch `main`, set `confirm_release=true`, and set `source_ref` to `main` or an exact 40-character private source SHA.
+The builder workflow remains available for manual recovery. Run **Actions → IQ Tunnel Public Builder — Signed Release** on builder branch `main`, set `confirm_release=true`, and set `source_ref` to `main` or an exact 40-character private source SHA. The workflow rejects a SHA that is not reachable from private `main`.
 
 ## 5. Separation and security
 
 - The source-read token is read-only and scoped only to IQ Tunnel's private repository.
 - The dispatch token is scoped only to the IQ Tunnel public builder and has Actions write, not Contents write.
+- The dispatcher is opt-in and has no production credentials.
 - Never re-use SODFA, Iraq Network Monitor, or another project's keys, tokens, or server paths.
 - Keep Android signing, manifest signing and Oracle deployment credentials in the public builder's `iq-tunnel-production` Environment.
 - The public builder's current source mirror and historical Git commits remain public. This workflow makes release builds use the private source revision; it does not erase old public copies or rewrite Git history.
