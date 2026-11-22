@@ -125,7 +125,6 @@ jobs:
           ORACLE_SSH_KEY: ${{ secrets.IQT_PROD_ORACLE_SSH_KEY }}
           ORACLE_HOST: ${{ secrets.IQT_PROD_ORACLE_HOST }}
           ORACLE_USER: ${{ secrets.IQT_PROD_ORACLE_USER }}
-          ORACLE_DEPLOY_DIR: ${{ secrets.IQT_PROD_ORACLE_DEPLOY_DIR }}
           ORACLE_KNOWN_HOSTS: ${{ secrets.IQT_PROD_ORACLE_KNOWN_HOSTS }}
           UPDATE_PRIVATE_KEY_BASE64: ${{ secrets.IQT_PROD_UPDATE_PRIVATE_KEY_BASE64 }}
           SOURCE_READ_TOKEN: ${{ secrets.IQT_PROD_SOURCE_READ_TOKEN }}
@@ -138,7 +137,6 @@ jobs:
           test -n "$ORACLE_SSH_KEY" || { echo "Missing ORACLE_SSH_KEY"; exit 1; }
           test -n "$ORACLE_HOST" || { echo "Missing ORACLE_HOST"; exit 1; }
           test -n "$ORACLE_USER" || { echo "Missing ORACLE_USER"; exit 1; }
-          test -n "$ORACLE_DEPLOY_DIR" || { echo "Missing ORACLE_DEPLOY_DIR"; exit 1; }
           test -n "$ORACLE_KNOWN_HOSTS" || { echo "Missing ORACLE_KNOWN_HOSTS"; exit 1; }
           test -n "$UPDATE_PRIVATE_KEY_BASE64" || { echo "Missing UPDATE_PRIVATE_KEY_BASE64"; exit 1; }
           test -n "$SOURCE_READ_TOKEN" || { echo "Missing IQT_PROD_SOURCE_READ_TOKEN"; exit 1; }
@@ -510,16 +508,16 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      - name: Publish APK and signed manifest to Oracle
+      - name: Publish APK and signed manifest to Oracle over restricted SFTP
         env:
           ORACLE_SSH_KEY: ${{ secrets.IQT_PROD_ORACLE_SSH_KEY }}
           ORACLE_HOST: ${{ secrets.IQT_PROD_ORACLE_HOST }}
           ORACLE_USER: ${{ secrets.IQT_PROD_ORACLE_USER }}
-          ORACLE_DEPLOY_DIR: ${{ secrets.IQT_PROD_ORACLE_DEPLOY_DIR }}
           ORACLE_KNOWN_HOSTS: ${{ secrets.IQT_PROD_ORACLE_KNOWN_HOSTS }}
           UPDATE_PRIVATE_KEY_BASE64: ${{ secrets.IQT_PROD_UPDATE_PRIVATE_KEY_BASE64 }}
           VERSION: ${{ steps.release_meta.outputs.version }}
           BUILD_NUMBER: ${{ steps.release_meta.outputs.build_number }}
+        shell: bash
         run: |
           set -euo pipefail
           umask 077
@@ -528,32 +526,29 @@ jobs:
           import base64, os, re
           host = os.environ["ORACLE_HOST"].strip()
           user = os.environ["ORACLE_USER"].strip()
-          dest = os.environ["ORACLE_DEPLOY_DIR"].strip()
+          version = os.environ["VERSION"].strip()
+          build = os.environ["BUILD_NUMBER"].strip()
           if not re.fullmatch(r"[A-Za-z0-9.-]+", host):
               raise SystemExit("ORACLE_HOST contains unsafe characters.")
           if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*", user):
               raise SystemExit("ORACLE_USER contains unsafe characters.")
-          if not re.fullmatch(r"/[A-Za-z0-9._/-]+", dest) or ".." in dest.split("/"):
-              raise SystemExit("ORACLE_DEPLOY_DIR must be a safe absolute path.")
-          value = os.environ["ORACLE_SSH_KEY"].replace("\r", "").strip()
+          if not re.fullmatch(r"[0-9A-Za-z.+-]+", version):
+              raise SystemExit("VERSION contains unsafe characters.")
+          if not re.fullmatch(r"[0-9]+", build):
+              raise SystemExit("BUILD_NUMBER must be numeric.")
+          value = os.environ["ORACLE_SSH_KEY"].replace("\\r", "").strip()
           data = value.encode() if "-----BEGIN " in value else base64.b64decode("".join(value.split()), validate=True)
           with open(os.path.expanduser("~/.ssh/id_ed25519"), "wb") as f:
               f.write(data.rstrip() + bytes([10]))
-          known = os.environ["ORACLE_KNOWN_HOSTS"].replace("\n", "\n").strip() + "\n"
+          known = os.environ["ORACLE_KNOWN_HOSTS"].strip() + "\\n"
+          if not known.strip():
+              raise SystemExit("ORACLE_KNOWN_HOSTS is empty.")
           with open(os.path.expanduser("~/.ssh/known_hosts"), "w") as f:
               f.write(known)
           PY
           chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
           ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null
-          DEST="$ORACLE_DEPLOY_DIR"
-          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes "$ORACLE_USER@$ORACLE_HOST" "mkdir -p '$DEST'"
-          scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes build/app/outputs/flutter-apk/app-release.apk "$ORACLE_USER@$ORACLE_HOST:$DEST/iq-tunnel-$VERSION-$BUILD_NUMBER.apk"
-          scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes build/third-party/xray-core-v26.11.9-source.tar.gz "$ORACLE_USER@$ORACLE_HOST:$DEST/xray-core-v26.11.9-source.tar.gz"
-          scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 "$ORACLE_USER@$ORACLE_HOST:$DEST/xray-core-v26.11.9-source.tar.gz.sha256"
-          PUBLIC_BASE="https://mahmoudaljuorany.store/updates/iq-tunnel"
-          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/iq-tunnel-$VERSION-$BUILD_NUMBER.apk" >/dev/null
-          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz" >/dev/null
-          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz.sha256" >/dev/null
+
           printf '%s' "$UPDATE_PRIVATE_KEY_BASE64" | tr -d '[:space:]' | base64 --decode > /tmp/iq-update-private.pem
           python3 - <<'PY'
           import base64, hashlib, json, os
@@ -584,9 +579,26 @@ jobs:
           with open("/tmp/iq-update-manifest.json", "w", encoding="utf-8") as f:
               json.dump(manifest, f, ensure_ascii=False, separators=(",", ":"))
           PY
-          scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes /tmp/iq-update-manifest.json "$ORACLE_USER@$ORACLE_HOST:$DEST/.manifest-${GITHUB_RUN_ID}.tmp"
-          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes "$ORACLE_USER@$ORACLE_HOST" "mv -f -- '$DEST/.manifest-${GITHUB_RUN_ID}.tmp' '$DEST/manifest.json'"
-          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' "https://mahmoudaljuorany.store/updates/iq-tunnel/manifest.json" -o /tmp/iq-update-manifest-published.json
+
+          sftp -b - \
+            -i ~/.ssh/id_ed25519 \
+            -oBatchMode=yes \
+            -oStrictHostKeyChecking=yes \
+            -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -oIdentitiesOnly=yes \
+            "$ORACLE_USER@$ORACLE_HOST" <<SFTP_BATCH
+          put build/app/outputs/flutter-apk/app-release.apk /incoming/iq-tunnel-$VERSION-$BUILD_NUMBER.apk
+          put build/third-party/xray-core-v26.11.9-source.tar.gz /incoming/xray-core-v26.11.9-source.tar.gz
+          put build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 /incoming/xray-core-v26.11.9-source.tar.gz.sha256
+          put /tmp/iq-update-manifest.json /incoming/.manifest-$GITHUB_RUN_ID.tmp
+          rename /incoming/.manifest-$GITHUB_RUN_ID.tmp /incoming/manifest.json
+          SFTP_BATCH
+
+          PUBLIC_BASE="https://mahmoudaljuorany.store/updates/iq-tunnel"
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/iq-tunnel-$VERSION-$BUILD_NUMBER.apk" >/dev/null
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz" >/dev/null
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz.sha256" >/dev/null
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' "$PUBLIC_BASE/manifest.json" -o /tmp/iq-update-manifest-published.json
           cmp --silent /tmp/iq-update-manifest.json /tmp/iq-update-manifest-published.json
 
       - name: Remove signing material
