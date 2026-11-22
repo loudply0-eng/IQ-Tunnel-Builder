@@ -203,5 +203,11 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 )
 
 
+    def test_sftp_deploy_uses_openssh_atomic_rename_command(self):
+        workflow = self.read_workflow("android-release.yml")
+        self.assertEqual(workflow.count("          rename /incoming/"), 4)
+        self.assertNotIn("posix-rename /incoming/", workflow)
+
+
 if __name__ == "__main__":
     unittest.main()
