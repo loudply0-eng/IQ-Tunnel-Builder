@@ -330,25 +330,55 @@ jobs:
           flutter analyze --no-fatal-infos
           flutter test
 
+      - name: Prepare monotonic release version
+        id: release_meta
+        env:
+          UPDATE_MANIFEST_URL: https://mahmoudaljuorany.store/updates/iq-tunnel/manifest.json
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import urllib.error
+          import urllib.request
+
+          pubspec = open("pubspec.yaml", encoding="utf-8").read()
+          match = re.search(r"^version:\s*([0-9.]+)\+([0-9]+)\s*$", pubspec, re.M)
+          if not match:
+              raise SystemExit("pubspec.yaml version must use version+buildNumber")
+          version = match.group(1)
+          source_build = int(match.group(2))
+          request = urllib.request.Request(
+              os.environ["UPDATE_MANIFEST_URL"],
+              headers={"Cache-Control": "no-cache, no-store", "Pragma": "no-cache", "User-Agent": "IQ-Tunnel-Release"},
+          )
+          current_build = 0
+          try:
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  if not response.geturl().startswith("https://"):
+                      raise SystemExit("Published manifest redirected away from HTTPS.")
+                  raw = response.read(64 * 1024 + 1)
+                  if len(raw) > 64 * 1024:
+                      raise SystemExit("Published update manifest exceeds 64 KiB.")
+                  current = json.loads(raw)
+                  current_build = int(current["build_number"])
+                  if current_build < 0:
+                      raise SystemExit("Published build number is invalid.")
+          except urllib.error.HTTPError as error:
+              if error.code != 404 or not error.geturl().startswith("https://"):
+                  raise
+          build_number = max(source_build, current_build + 1)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("version=" + version + "\n")
+              output.write("build_number=" + str(build_number) + "\n")
+          print("Prepared release version " + version + "+" + str(build_number))
+          PY
+
       - name: Build signed APK
         env:
           UPDATE_MANIFEST_URL: https://mahmoudaljuorany.store/updates/iq-tunnel/manifest.json
           UPDATE_PUBLIC_KEY: 4eOsYpXniRBp1ZTJjq5c3HbDW8tCvWbv1fr5PLVl+sk=
-        run: flutter build apk --release --dart-define=UPDATE_MANIFEST_URL="$UPDATE_MANIFEST_URL" --dart-define=UPDATE_PUBLIC_KEY="$UPDATE_PUBLIC_KEY"
-
-      - name: Capture release version
-        id: release_meta
-        run: |
-          python3 - <<'PY'
-          import os, re
-          text = open("pubspec.yaml", encoding="utf-8").read()
-          match = re.search(r"^version:\s*([0-9.]+)\+([0-9]+)\s*$", text, re.M)
-          if not match:
-              raise SystemExit("pubspec.yaml version must use version+buildNumber")
-          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-              out.write("version=" + match.group(1) + "\n")
-              out.write("build_number=" + match.group(2) + "\n")
-          PY
+        run: flutter build apk --release --build-number="${{ steps.release_meta.outputs.build_number }}" --dart-define=UPDATE_MANIFEST_URL="$UPDATE_MANIFEST_URL" --dart-define=UPDATE_PUBLIC_KEY="$UPDATE_PUBLIC_KEY"
 
       - name: Ensure release build number advances the published manifest
         env:
@@ -535,7 +565,7 @@ jobs:
               "build_number": int(os.environ["BUILD_NUMBER"]),
               "download_url": "https://mahmoudaljuorany.store/updates/iq-tunnel/iq-tunnel-" + os.environ["VERSION"] + "-" + os.environ["BUILD_NUMBER"] + ".apk",
               "sha256": digest,
-              "notes": "إصدار 1.0.11:\n• فحص تلقائي للتحديثات الموقعة عند فتح التطبيق.\n• تنزيل التحديث والتحقق من توقيع Ed25519 وبصمة SHA-256 قبل التثبيت.\n• تحسين حماية ملف manifest ومنع الاستجابات الكبيرة والتحويلات إلى HTTP.\n• حماية اتصال OpenWrt المحلي عبر HTTP بموافقة صريحة لمرة واحدة."
+              "notes": "تحديثات وتحسينات وإصلاحات لهذا الإصدار."
           }
           payload = json.dumps(manifest, ensure_ascii=False, separators=(",", ":")).encode()
           open("/tmp/iq-update-payload.json", "wb").write(payload)
