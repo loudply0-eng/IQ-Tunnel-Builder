@@ -15,10 +15,9 @@ RELEASE_SECRET_NAMES = {
     "IQT_PROD_ORACLE_SSH_KEY",
     "IQT_PROD_ORACLE_HOST",
     "IQT_PROD_ORACLE_USER",
-    "IQT_PROD_ORACLE_DEPLOY_DIR",
     "IQT_PROD_ORACLE_KNOWN_HOSTS",
     "IQT_PROD_UPDATE_PRIVATE_KEY_BASE64",
-    "IQT_PROD_SOURCE_READ_TOKEN",
+    "IQT_PROD_SOURCE_DEPLOY_KEY",
 }
 SIGNED_ARTIFACT_SECRET_NAMES = {
     "IQT_PROD_ANDROID_KEYSTORE_BASE64",
@@ -118,7 +117,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("repository: loudply0-eng/IQ-Tunnel", workflow)
         self.assertIn("path: .iqt-private-source", workflow)
         self.assertIn("rsync -a --delete", workflow)
-        self.assertIn("SOURCE_READ_TOKEN", workflow)
+        self.assertIn("SOURCE_DEPLOY_KEY", workflow)
         self.assertIn("path: .iqt-private-main", workflow)
         self.assertIn("fetch-depth: 0", workflow)
         self.assertIn("merge-base --is-ancestor", workflow)
