@@ -617,7 +617,7 @@ jobs:
 
           PUBLIC_BASE="https://mahmoudaljuorany.store/updates/iq-tunnel"
           APK_URL="$PUBLIC_BASE/iq-tunnel-$VERSION-$BUILD_NUMBER.apk"
-          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 "$APK_URL" -o /tmp/iq-update-apk-published.apk /tmp/iqt-sftp-capabilities.log
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 "$APK_URL" -o /tmp/iq-update-apk-published.apk
           EXPECTED_APK_SHA256="$(cat /tmp/iq-update-apk.sha256)"
           ACTUAL_APK_SHA256="$(sha256sum /tmp/iq-update-apk-published.apk | awk '{print $1}')"
           test "$ACTUAL_APK_SHA256" = "$EXPECTED_APK_SHA256" || {
@@ -631,4 +631,4 @@ jobs:
 
       - name: Remove signing material
         if: always()
-        run: rm -f android/key.properties android/app/upload-keystore.jks ~/.ssh/id_ed25519 /tmp/iq-update-private.pem /tmp/iq-update-public.pem /tmp/iq-update-payload.json /tmp/iq-update-manifest-base.json /tmp/iq-update-signature.bin /tmp/iq-update-manifest.json /tmp/iq-update-apk.sha256 /tmp/iq-update-apk-published.apk
+        run: rm -f android/key.properties android/app/upload-keystore.jks ~/.ssh/id_ed25519 /tmp/iq-update-private.pem /tmp/iq-update-public.pem /tmp/iq-update-payload.json /tmp/iq-update-manifest-base.json /tmp/iq-update-signature.bin /tmp/iq-update-manifest.json /tmp/iq-update-apk.sha256 /tmp/iq-update-apk-published.apk /tmp/iqt-sftp-capabilities.log
