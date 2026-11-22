@@ -226,6 +226,25 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn("posix-rename /incoming/", workflow)
 
 
+    def test_sftp_deploy_requires_posix_rename_extension_before_upload(self):
+        workflow = self.read_workflow("android-release.yml")
+        start = workflow.index(
+            "      - name: Publish APK and signed manifest to Oracle over restricted SFTP"
+        )
+        end = workflow.index("      - name: Remove signing material", start)
+        deploy_step = workflow[start:end]
+
+        preflight = deploy_step.index("sftp -vv -b -")
+        first_upload = deploy_step.index("put build/app/outputs/flutter-apk/app-release.apk")
+        self.assertLess(preflight, first_upload)
+        self.assertIn(
+            'Server supports extension "posix-rename@openssh.com" revision 1',
+            deploy_step,
+        )
+        self.assertIn("refusing to publish", deploy_step)
+        self.assertIn("2>/tmp/iqt-sftp-capabilities.log", deploy_step)
+
+
     def test_deploy_uses_sftp_only_without_remote_shell_or_scp(self):
         workflow = self.read_workflow("android-release.yml")
         start = workflow.index(
