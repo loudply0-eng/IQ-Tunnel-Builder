@@ -549,6 +549,22 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
           ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null
 
+          # Require OpenSSH's POSIX rename extension before any upload. The normal
+          # sftp "rename" command uses this extension when the server advertises it.
+          sftp -vv -b - \\
+            -i ~/.ssh/id_ed25519 \\
+            -oBatchMode=yes \\
+            -oStrictHostKeyChecking=yes \\
+            -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \\
+            -oIdentitiesOnly=yes \\
+            "$ORACLE_USER@$ORACLE_HOST" 2>/tmp/iqt-sftp-capabilities.log <<'SFTP_PROBE'
+          pwd
+          SFTP_PROBE
+          grep -Fq 'Server supports extension "posix-rename@openssh.com" revision 1' /tmp/iqt-sftp-capabilities.log || {
+            echo "Oracle SFTP server does not advertise POSIX rename; refusing to publish."
+            exit 1
+          }
+
           printf '%s' "$UPDATE_PRIVATE_KEY_BASE64" | tr -d '[:space:]' | base64 --decode > /tmp/iq-update-private.pem
           python3 - <<'PY'
           import base64, hashlib, json, os
@@ -601,7 +617,7 @@ jobs:
 
           PUBLIC_BASE="https://mahmoudaljuorany.store/updates/iq-tunnel"
           APK_URL="$PUBLIC_BASE/iq-tunnel-$VERSION-$BUILD_NUMBER.apk"
-          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 "$APK_URL" -o /tmp/iq-update-apk-published.apk
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 "$APK_URL" -o /tmp/iq-update-apk-published.apk /tmp/iqt-sftp-capabilities.log
           EXPECTED_APK_SHA256="$(cat /tmp/iq-update-apk.sha256)"
           ACTUAL_APK_SHA256="$(sha256sum /tmp/iq-update-apk-published.apk | awk '{print $1}')"
           test "$ACTUAL_APK_SHA256" = "$EXPECTED_APK_SHA256" || {
