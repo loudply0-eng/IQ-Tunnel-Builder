@@ -209,5 +209,26 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn("posix-rename /incoming/", workflow)
 
 
+    def test_deploy_uses_sftp_only_without_remote_shell_or_scp(self):
+        workflow = self.read_workflow("android-release.yml")
+        start = workflow.index(
+            "      - name: Publish APK and signed manifest to Oracle over restricted SFTP"
+        )
+        end = workflow.index("      - name: Remove signing material", start)
+        deploy_step = workflow[start:end]
+
+        self.assertIn('if user != "iqt-deploy":', deploy_step)
+        self.assertIn("sftp -b -", deploy_step)
+        self.assertIn("-oStrictHostKeyChecking=yes", deploy_step)
+        self.assertNotIn("scp ", deploy_step)
+        self.assertNotIn("ssh ", deploy_step)
+        self.assertNotIn("ORACLE_DEPLOY_DIR", deploy_step)
+        self.assertEqual(deploy_step.count("rename /incoming/"), 4)
+        self.assertLess(
+            deploy_step.index("rename /incoming/.manifest-"),
+            deploy_step.index('PUBLIC_BASE="https://'),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
