@@ -40,15 +40,15 @@ jobs:
         shell: bash
         env:
           SOURCE_REF: ${{ inputs.source_ref }}
-          SOURCE_READ_TOKEN: ${{ secrets.IQT_PROD_SOURCE_READ_TOKEN }}
+          SOURCE_DEPLOY_KEY: ${{ secrets.IQT_PROD_SOURCE_DEPLOY_KEY }}
         run: |
           set -euo pipefail
           if [[ "$SOURCE_REF" != "main" && ! "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
             echo "source_ref must be main or a full 40-character commit SHA."
             exit 1
           fi
-          test -n "$SOURCE_READ_TOKEN" || {
-            echo "Missing Environment secret IQT_PROD_SOURCE_READ_TOKEN."
+          test -n "$SOURCE_DEPLOY_KEY" || {
+            echo "Missing Environment secret IQT_PROD_SOURCE_DEPLOY_KEY."
             exit 1
           }
 
@@ -57,7 +57,7 @@ jobs:
         with:
           repository: loudply0-eng/IQ-Tunnel
           ref: ${{ inputs.source_ref }}
-          token: ${{ secrets.IQT_PROD_SOURCE_READ_TOKEN }}
+          ssh-key: ${{ secrets.IQT_PROD_SOURCE_DEPLOY_KEY }}
           path: .iqt-private-source
           persist-credentials: false
 
@@ -66,7 +66,7 @@ jobs:
         with:
           repository: loudply0-eng/IQ-Tunnel
           ref: main
-          token: ${{ secrets.IQT_PROD_SOURCE_READ_TOKEN }}
+          ssh-key: ${{ secrets.IQT_PROD_SOURCE_DEPLOY_KEY }}
           path: .iqt-private-main
           fetch-depth: 0
           persist-credentials: false
@@ -127,7 +127,7 @@ jobs:
           ORACLE_USER: ${{ secrets.IQT_PROD_ORACLE_USER }}
           ORACLE_KNOWN_HOSTS: ${{ secrets.IQT_PROD_ORACLE_KNOWN_HOSTS }}
           UPDATE_PRIVATE_KEY_BASE64: ${{ secrets.IQT_PROD_UPDATE_PRIVATE_KEY_BASE64 }}
-          SOURCE_READ_TOKEN: ${{ secrets.IQT_PROD_SOURCE_READ_TOKEN }}
+          SOURCE_DEPLOY_KEY: ${{ secrets.IQT_PROD_SOURCE_DEPLOY_KEY }}
         run: |
           set -euo pipefail
           test -n "$ANDROID_KEYSTORE_BASE64" || { echo "Missing ANDROID_KEYSTORE_BASE64"; exit 1; }
@@ -139,7 +139,7 @@ jobs:
           test -n "$ORACLE_USER" || { echo "Missing ORACLE_USER"; exit 1; }
           test -n "$ORACLE_KNOWN_HOSTS" || { echo "Missing ORACLE_KNOWN_HOSTS"; exit 1; }
           test -n "$UPDATE_PRIVATE_KEY_BASE64" || { echo "Missing UPDATE_PRIVATE_KEY_BASE64"; exit 1; }
-          test -n "$SOURCE_READ_TOKEN" || { echo "Missing IQT_PROD_SOURCE_READ_TOKEN"; exit 1; }
+          test -n "$SOURCE_DEPLOY_KEY" || { echo "Missing IQT_PROD_SOURCE_DEPLOY_KEY"; exit 1; }
 
       - name: Install Go for the pinned libXray build
         uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
