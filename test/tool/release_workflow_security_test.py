@@ -123,6 +123,10 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("fetch-depth: 0", workflow)
         self.assertIn("merge-base --is-ancestor", workflow)
         self.assertIn("not an ancestor of private main", workflow)
+        self.assertIn("Prepare monotonic release version", workflow)
+        self.assertIn("max(source_build, current_build + 1)", workflow)
+        self.assertIn('--build-number="${{ steps.release_meta.outputs.build_number }}"', workflow)
+        self.assertNotIn("إصدار 1.0.11:", workflow)
 
     def test_signed_artifact_workflow_is_manual_confirmed_and_environment_gated(self):
         workflow = self.read_workflow("android-signed-artifact.yml")
