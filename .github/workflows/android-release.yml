@@ -61,27 +61,48 @@ jobs:
           path: .iqt-private-source
           persist-credentials: false
 
-      - name: Populate build workspace from private source
+      - name: Checkout private main history for trust verification
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: loudply0-eng/IQ-Tunnel
+          ref: main
+          token: ${{ secrets.IQT_PROD_SOURCE_READ_TOKEN }}
+          path: .iqt-private-main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify selected source commit belongs to private main history
         shell: bash
-        env:
-          SOURCE_REF: ${{ inputs.source_ref }}
         run: |
           set -euo pipefail
           SOURCE_SHA="$(git -C .iqt-private-source rev-parse HEAD)"
-          if [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]] && [[ "$SOURCE_SHA" != "$SOURCE_REF" ]]; then
-            echo "Private source checkout did not resolve to the requested commit."
+          MAIN_SHA="$(git -C .iqt-private-main rev-parse HEAD)"
+          if ! git -C .iqt-private-main cat-file -e "$SOURCE_SHA^{commit}" 2>/dev/null; then
+            echo "Selected source commit is not present in private main history."
             exit 1
           fi
+          if ! git -C .iqt-private-main merge-base --is-ancestor "$SOURCE_SHA" "$MAIN_SHA"; then
+            echo "Selected source commit is not an ancestor of private main."
+            exit 1
+          fi
+          echo "Verified private source commit $SOURCE_SHA is reachable from main at $MAIN_SHA"
+
+      - name: Populate build workspace from verified private source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="$(git -C .iqt-private-source rev-parse HEAD)"
           # Keep the public builder's Actions workflows and Git metadata, while
           # every Flutter file, asset, test, plugin and build helper is sourced
-          # from the exact private commit selected above.
+          # from the verified private commit selected above.
           rsync -a --delete \
             --exclude='.git/' \
             --exclude='.github/' \
             --exclude='.iqt-private-source/' \
+            --exclude='.iqt-private-main/' \
             .iqt-private-source/ ./
-          rm -rf .iqt-private-source
-          echo "Using private IQ Tunnel source commit: $SOURCE_SHA"
+          rm -rf .iqt-private-source .iqt-private-main
+          echo "Using verified private IQ Tunnel source commit: $SOURCE_SHA"
           test -s pubspec.yaml
           test -s lib/main.dart
           test -s tool/patch_libxray_android.py
