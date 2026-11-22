@@ -236,15 +236,19 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        for document in (security, automatic):
-            self.assertIn("IQT_PROD_SOURCE_DEPLOY_KEY", document)
-            self.assertNotIn("IQT_PROD_SOURCE_READ_TOKEN", document)
+        self.assertIn("IQT_PROD_SOURCE_DEPLOY_KEY", security)
+        self.assertIn("IQT_PROD_SOURCE_DEPLOY_KEY", automatic)
+        active_secret_section = security.split(
+            "The legacy repository-level names", 1
+        )[0]
+        self.assertNotIn("IQT_PROD_SOURCE_READ_TOKEN", active_secret_section)
+        self.assertNotIn("IQT_PROD_ORACLE_DEPLOY_DIR", active_secret_section)
+        self.assertNotIn("IQT_PROD_SOURCE_READ_TOKEN", automatic)
 
         self.assertIn("iqt-deploy", security)
         self.assertIn("/incoming", security)
         self.assertIn("iqt-deploy", automatic)
         self.assertIn("/incoming", automatic)
-        self.assertNotIn("IQT_PROD_ORACLE_DEPLOY_DIR", security)
 
 
 if __name__ == "__main__":
