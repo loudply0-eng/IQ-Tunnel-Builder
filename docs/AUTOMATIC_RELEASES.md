@@ -10,7 +10,7 @@ Keep deployment branches restricted to `main`. Add this Environment secret:
 |---|---|
 | `IQT_PROD_SOURCE_DEPLOY_KEY` | Private half of a dedicated SSH deploy key. Register its matching public key on `loudply0-eng/IQ-Tunnel` as a read-only deploy key. No account-wide PAT or write permission |
 
-Do not grant this token write access. It is separate from Android signing, Ed25519 update signing and Oracle SSH credentials.
+Do not grant this deploy key write access. It is separate from Android signing, Ed25519 update signing and Oracle SSH credentials.
 
 **Before enabling automatic releases, add at least one trusted required reviewer to this Environment.** The dispatcher deliberately has an opt-in switch and must remain disabled until the approval gate is configured. Do not enable unattended production publishing merely to make builds automatic.
 
