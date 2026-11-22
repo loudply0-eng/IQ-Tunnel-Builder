@@ -590,13 +590,13 @@ jobs:
             -oIdentitiesOnly=yes \
             "$ORACLE_USER@$ORACLE_HOST" <<SFTP_BATCH
           put build/app/outputs/flutter-apk/app-release.apk /incoming/.iqt-$GITHUB_RUN_ID.apk.tmp
-          posix-rename /incoming/.iqt-$GITHUB_RUN_ID.apk.tmp /incoming/iq-tunnel-$VERSION-$BUILD_NUMBER.apk
+          rename /incoming/.iqt-$GITHUB_RUN_ID.apk.tmp /incoming/iq-tunnel-$VERSION-$BUILD_NUMBER.apk
           put build/third-party/xray-core-v26.11.9-source.tar.gz /incoming/.iqt-$GITHUB_RUN_ID.xray.tmp
-          posix-rename /incoming/.iqt-$GITHUB_RUN_ID.xray.tmp /incoming/xray-core-v26.11.9-source.tar.gz
+          rename /incoming/.iqt-$GITHUB_RUN_ID.xray.tmp /incoming/xray-core-v26.11.9-source.tar.gz
           put build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 /incoming/.iqt-$GITHUB_RUN_ID.sha256.tmp
-          posix-rename /incoming/.iqt-$GITHUB_RUN_ID.sha256.tmp /incoming/xray-core-v26.11.9-source.tar.gz.sha256
+          rename /incoming/.iqt-$GITHUB_RUN_ID.sha256.tmp /incoming/xray-core-v26.11.9-source.tar.gz.sha256
           put /tmp/iq-update-manifest.json /incoming/.manifest-$GITHUB_RUN_ID.tmp
-          posix-rename /incoming/.manifest-$GITHUB_RUN_ID.tmp /incoming/manifest.json
+          rename /incoming/.manifest-$GITHUB_RUN_ID.tmp /incoming/manifest.json
           SFTP_BATCH
 
           PUBLIC_BASE="https://mahmoudaljuorany.store/updates/iq-tunnel"
