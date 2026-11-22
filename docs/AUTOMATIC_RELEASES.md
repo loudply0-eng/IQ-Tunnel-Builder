@@ -8,7 +8,7 @@ Keep deployment branches restricted to `main`. Add this Environment secret:
 
 | Name | Value and scope |
 |---|---|
-| `IQT_PROD_SOURCE_READ_TOKEN` | Fine-grained PAT restricted to the private repository `loudply0-eng/IQ-Tunnel` only, with Repository permissions → Contents: Read-only |
+| `IQT_PROD_SOURCE_DEPLOY_KEY` | Private half of a dedicated SSH deploy key. Register its matching public key on `loudply0-eng/IQ-Tunnel` as a read-only deploy key. No account-wide PAT or write permission |
 
 Do not grant this token write access. It is separate from Android signing, Ed25519 update signing and Oracle SSH credentials.
 
@@ -50,9 +50,10 @@ The builder workflow remains available for manual recovery. Run **Actions → IQ
 
 ## 5. Separation and security
 
-- The source-read token is read-only and scoped only to IQ Tunnel's private repository.
+- The source deploy key is a dedicated read-only deploy key for IQ Tunnel's private repository.
 - The dispatch token is scoped only to the IQ Tunnel public builder and has Actions write, not Contents write.
 - The dispatcher is opt-in and has no production credentials.
 - Never re-use SODFA, Iraq Network Monitor, or another project's keys, tokens, or server paths.
 - Keep Android signing, manifest signing and Oracle deployment credentials in the public builder's `iq-tunnel-production` Environment.
+- Oracle publishing must use the dedicated `iqt-deploy` account, restricted to SFTP with no shell, sudo, or forwarding and writes limited to the jailed `/incoming` directory. The website must expose that directory read-only; verify atomic rename and HTTPS checksum checks before enabling production dispatch.
 - The public builder's current source mirror and historical Git commits remain public. This workflow makes release builds use the private source revision; it does not erase old public copies or rewrite Git history.
