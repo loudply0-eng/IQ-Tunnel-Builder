@@ -43,7 +43,7 @@ class EncryptedVault {
   final VaultKeyStore _keyStore;
   final AesGcm _aes = AesGcm.with256bits();
 
-  Future<SecretKey> _localKey() async {
+  Future<SecretKey> _localKey({required bool createIfMissing}) async {
     final stored = await _keyStore.readKey();
     if (stored != null) {
       final bytes = base64Decode(stored);
@@ -51,6 +51,12 @@ class EncryptedVault {
         throw const FormatException('The local vault key is invalid.');
       }
       return SecretKey(bytes);
+    }
+    if (!createIfMissing) {
+      throw StateError(
+        'The local vault key is missing; refusing to replace the key '
+        'needed to decrypt existing profile data.',
+      );
     }
     final bytes = _secureRandomBytes(32);
     await _keyStore.writeKey(base64Encode(bytes));
@@ -61,7 +67,7 @@ class EncryptedVault {
   Future<Uint8List> encryptLocal(List<int> cleartext) async {
     final box = await _aes.encrypt(
       cleartext,
-      secretKey: await _localKey(),
+      secretKey: await _localKey(createIfMissing: true),
       aad: _localAad,
     );
     return _pack(box.nonce, box.cipherText, box.mac.bytes);
@@ -72,7 +78,7 @@ class EncryptedVault {
     final parts = _unpack(encrypted);
     final clear = await _aes.decrypt(
       SecretBox(parts.cipherText, nonce: parts.nonce, mac: Mac(parts.mac)),
-      secretKey: await _localKey(),
+      secretKey: await _localKey(createIfMissing: false),
       aad: _localAad,
     );
     return Uint8List.fromList(clear);
