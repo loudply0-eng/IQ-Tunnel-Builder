@@ -287,5 +287,41 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("/incoming", automatic)
 
 
+    def test_release_checks_package_identity_and_permanent_android_signer(self):
+        workflow = self.read_workflow("android-release.yml")
+        package_step = workflow.split(
+            "- name: Verify Android package identity", 1
+        )[1].split("- name: Verify Android APK signature", 1)[0]
+        signer_step = workflow.split(
+            "- name: Verify Android APK signature", 1
+        )[1].split("- uses: actions/upload-artifact@", 1)[0]
+
+        self.assertIn('aapt dump badging "$APK"', package_step)
+        self.assertIn("package: name='com.iqtunnel.iq_tunnel'", package_step)
+        self.assertIn("apksigner", signer_step)
+        self.assertIn("verify --verbose --print-certs", signer_step)
+        self.assertIn(
+            "cc96499ac23bf3a9101b2a7cc7d19feef852e61a5902860abe15218a8968b017",
+            signer_step,
+        )
+        self.assertIn("test \"$SIGNER_SHA256\" = \"$EXPECTED_SIGNER_SHA256\"", signer_step)
+
+    def test_release_verifies_published_apk_http_size_hash_and_manifest(self):
+        workflow = self.read_workflow("android-release.yml")
+        publish_step = workflow.split(
+            "- name: Publish APK and signed manifest to Oracle over restricted SFTP",
+            1,
+        )[1].split("- name: Remove signing material", 1)[0]
+
+        self.assertIn("curl --fail --silent --show-error --location", publish_step)
+        self.assertIn("HTTP/\\\\S+ 200", publish_step)
+        self.assertIn("Content-Length", publish_step)
+        self.assertIn("len(lengths) != 1", publish_step)
+        self.assertIn("int(lengths[0]) != actual_size", publish_step)
+        self.assertIn("ACTUAL_APK_SHA256", publish_step)
+        self.assertIn("EXPECTED_APK_SHA256", publish_step)
+        self.assertIn("cmp --silent /tmp/iq-update-manifest.json /tmp/iq-update-manifest-published.json", publish_step)
+
+
 if __name__ == "__main__":
     unittest.main()
