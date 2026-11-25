@@ -296,7 +296,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             "- name: Verify Android APK signature", 1
         )[1].split("- uses: actions/upload-artifact@", 1)[0]
 
-        self.assertIn('aapt dump badging "$APK"', package_step)
+        self.assertIn('"$AAPT" dump badging "$APK"', package_step)
         self.assertIn("package: name='com.iqtunnel.iq_tunnel'", package_step)
         self.assertIn("apksigner", signer_step)
         self.assertIn("verify --verbose --print-certs", signer_step)
