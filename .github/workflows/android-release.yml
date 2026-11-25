@@ -569,9 +569,13 @@ jobs:
             -oStrictHostKeyChecking=yes \
             -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -oIdentitiesOnly=yes \
-            "$ORACLE_USER@$ORACLE_HOST" 2>/tmp/iqt-sftp-capabilities.log <<'SFTP_PROBE'
+            "$ORACLE_USER@$ORACLE_HOST" > /tmp/iqt-sftp-capabilities.log 2>&1 <<'SFTP_PROBE'
           pwd
           SFTP_PROBE
+          grep -Fq 'Remote working directory: /' /tmp/iqt-sftp-capabilities.log || {
+            echo "SFTP account did not start at its jailed root; refusing to publish."
+            exit 1
+          }
           grep -Fq 'Server supports extension "posix-rename@openssh.com" revision 1' /tmp/iqt-sftp-capabilities.log || {
             echo "Oracle SFTP server does not advertise POSIX rename; refusing to publish."
             exit 1
@@ -617,14 +621,14 @@ jobs:
             -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -oIdentitiesOnly=yes \
             "$ORACLE_USER@$ORACLE_HOST" <<SFTP_BATCH
-          put build/app/outputs/flutter-apk/app-release.apk /incoming/.iqt-$GITHUB_RUN_ID.apk.tmp
-          rename /incoming/.iqt-$GITHUB_RUN_ID.apk.tmp /incoming/iq-tunnel-$VERSION-$BUILD_NUMBER.apk
-          put build/third-party/xray-core-v26.11.9-source.tar.gz /incoming/.iqt-$GITHUB_RUN_ID.xray.tmp
-          rename /incoming/.iqt-$GITHUB_RUN_ID.xray.tmp /incoming/xray-core-v26.11.9-source.tar.gz
-          put build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 /incoming/.iqt-$GITHUB_RUN_ID.sha256.tmp
-          rename /incoming/.iqt-$GITHUB_RUN_ID.sha256.tmp /incoming/xray-core-v26.11.9-source.tar.gz.sha256
-          put /tmp/iq-update-manifest.json /incoming/.manifest-$GITHUB_RUN_ID.tmp
-          rename /incoming/.manifest-$GITHUB_RUN_ID.tmp /incoming/manifest.json
+          put build/app/outputs/flutter-apk/app-release.apk /.iqt-$GITHUB_RUN_ID.apk.tmp
+          rename /.iqt-$GITHUB_RUN_ID.apk.tmp /iq-tunnel-$VERSION-$BUILD_NUMBER.apk
+          put build/third-party/xray-core-v26.11.9-source.tar.gz /.iqt-$GITHUB_RUN_ID.xray.tmp
+          rename /.iqt-$GITHUB_RUN_ID.xray.tmp /xray-core-v26.11.9-source.tar.gz
+          put build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 /.iqt-$GITHUB_RUN_ID.sha256.tmp
+          rename /.iqt-$GITHUB_RUN_ID.sha256.tmp /xray-core-v26.11.9-source.tar.gz.sha256
+          put /tmp/iq-update-manifest.json /.manifest-$GITHUB_RUN_ID.tmp
+          rename /.manifest-$GITHUB_RUN_ID.tmp /manifest.json
           SFTP_BATCH
 
           PUBLIC_BASE="https://mahmoudaljuorany.store/updates/iq-tunnel"
