@@ -314,7 +314,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         )[1].split("- name: Remove signing material", 1)[0]
 
         self.assertIn("curl --fail --silent --show-error --location", publish_step)
-        self.assertIn("HTTP/\\\\S+ 200", publish_step)
+        self.assertIn("HTTP/\\S+ 200", publish_step)
         self.assertIn("Content-Length", publish_step)
         self.assertIn("len(lengths) != 1", publish_step)
         self.assertIn("int(lengths[0]) != actual_size", publish_step)
