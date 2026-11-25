@@ -52,6 +52,29 @@ void main() {
     expect(await store.readAll(), profiles);
   });
 
+  test('missing vault key preserves encrypted profiles without replacement', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final originalKeys = _MemoryKeyStore();
+    final originalStore = EncryptedProfileStore(
+      vault: EncryptedVault(keyStore: originalKeys),
+      preferences: prefs,
+    );
+    await originalStore.writeAll([
+      {'name': 'Existing VPN', 'type': 'vless', 'uuid': 'private-credential'},
+    ]);
+    final encryptedBefore = await originalStore.debugStoredValue();
+
+    final missingKeys = _MemoryKeyStore();
+    final restoredStore = EncryptedProfileStore(
+      vault: EncryptedVault(keyStore: missingKeys),
+      preferences: prefs,
+    );
+    await expectLater(restoredStore.readAll(), throwsA(isA<StateError>()));
+
+    expect(missingKeys.value, isNull);
+    expect(await restoredStore.debugStoredValue(), encryptedBefore);
+  });
+
   test('encrypted backup restores profiles with password', () async {
     final prefs = await SharedPreferences.getInstance();
     final keyStore = _MemoryKeyStore();
