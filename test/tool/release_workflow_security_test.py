@@ -266,7 +266,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("put build/app/outputs/flutter-apk/app-release.apk /.iqt-", deploy_step)
         self.assertIn("rename /.manifest-", deploy_step)
         self.assertLess(
-            deploy_step.index("rename /incoming/.manifest-"),
+            deploy_step.index("rename /.manifest-"),
             deploy_step.index('PUBLIC_BASE="https://'),
         )
 
