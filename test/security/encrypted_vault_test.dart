@@ -28,6 +28,33 @@ void main() {
       await expectLater(vault.decryptLocal(encrypted), throwsA(anything));
     });
 
+    test('decrypting with a missing local key fails without creating a replacement', () async {
+      final originalKeys = MemoryKeyStore();
+      final originalVault = EncryptedVault(keyStore: originalKeys);
+      final encrypted = await originalVault.encryptLocal(
+        utf8.encode('existing private VPN profile'),
+      );
+
+      final missingKeys = MemoryKeyStore();
+      final restoredVault = EncryptedVault(keyStore: missingKeys);
+      await expectLater(
+        restoredVault.decryptLocal(encrypted),
+        throwsA(isA<StateError>()),
+      );
+      expect(missingKeys.value, isNull);
+    });
+
+    test('malformed local key is rejected and never overwritten', () async {
+      final keys = MemoryKeyStore()..value = 'not-base64';
+      final vault = EncryptedVault(keyStore: keys);
+      final encrypted = await EncryptedVault(
+        keyStore: MemoryKeyStore(),
+      ).encryptLocal(utf8.encode('profile'));
+
+      await expectLater(vault.decryptLocal(encrypted), throwsFormatException);
+      expect(keys.value, 'not-base64');
+    });
+
     test('backup round-trips with password and rejects wrong password', () async {
       final vault = EncryptedVault(keyStore: MemoryKeyStore());
       final clear = utf8.encode('backup profile data');
