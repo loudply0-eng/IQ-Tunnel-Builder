@@ -222,8 +222,9 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
     def test_sftp_deploy_uses_openssh_atomic_rename_command(self):
         workflow = self.read_workflow("android-release.yml")
-        self.assertEqual(workflow.count("          rename /incoming/"), 4)
-        self.assertNotIn("posix-rename /incoming/", workflow)
+        self.assertEqual(workflow.count("          rename /"), 4)
+        self.assertNotIn("rename /incoming/", workflow)
+        self.assertIn("Remote working directory: /", workflow)
 
 
     def test_sftp_deploy_requires_posix_rename_extension_before_upload(self):
@@ -242,7 +243,8 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             deploy_step,
         )
         self.assertIn("refusing to publish", deploy_step)
-        self.assertIn("2>/tmp/iqt-sftp-capabilities.log", deploy_step)
+        self.assertIn("> /tmp/iqt-sftp-capabilities.log 2>&1", deploy_step)
+        self.assertIn("Remote working directory: /", deploy_step)
 
 
     def test_deploy_uses_sftp_only_without_remote_shell_or_scp(self):
@@ -259,7 +261,10 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn("scp ", deploy_step)
         self.assertNotIn("ssh ", deploy_step)
         self.assertNotIn("ORACLE_DEPLOY_DIR", deploy_step)
-        self.assertEqual(deploy_step.count("rename /incoming/"), 4)
+        self.assertEqual(deploy_step.count("rename /"), 4)
+        self.assertNotIn("rename /incoming/", deploy_step)
+        self.assertIn("put build/app/outputs/flutter-apk/app-release.apk /.iqt-", deploy_step)
+        self.assertIn("rename /.manifest-", deploy_step)
         self.assertLess(
             deploy_step.index("rename /incoming/.manifest-"),
             deploy_step.index('PUBLIC_BASE="https://'),
