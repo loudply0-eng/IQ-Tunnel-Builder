@@ -46,6 +46,20 @@ def _parse_xmltree(dump: str) -> list[dict]:
     return roots
 
 
+def _android_attribute(attributes: dict, name: str) -> str | None:
+    # AAPT2 versions differ: some print android:name, others print the
+    # expanded namespace URI followed by :name.
+    matches = [
+        value for key, value in attributes.items()
+        if key == f"android:{name}"
+        or key == f"http://schemas.android.com/apk/res/android:{name}"
+        or key.endswith(f":{name}")
+    ]
+    if len(matches) > 1:
+        raise SystemExit(f"Packaged manifest contains ambiguous android:{name} attributes.")
+    return matches[0] if matches else None
+
+
 def _direct_child(parent: dict, name: str) -> dict:
     matches = [child for child in parent["children"] if child["name"] == name]
     if len(matches) != 1:
@@ -66,7 +80,10 @@ def _assert_exclusions(parent: dict, expected_domains: tuple[str, ...], context:
 
 
 def _manifest_resource_id(dump: str, attribute: str, resource_name: str, resources: str) -> None:
-    lines = [line for line in dump.splitlines() if f"android:{attribute}" in line]
+    lines = [
+        line for line in dump.splitlines()
+        if re.search(rf"(?:android:|http://schemas\\.android\\.com/apk/res/android:){re.escape(attribute)}\\(", line)
+    ]
     if len(lines) != 1:
         raise SystemExit(f"APK manifest must contain exactly one android:{attribute} attribute.")
     line = lines[0]
@@ -95,7 +112,7 @@ def validate_dumps(manifest: str, legacy: str, extraction: str, resources: str) 
     if len(manifest_roots) != 1 or manifest_roots[0]["name"] != "manifest":
         raise SystemExit("Packaged Android manifest could not be parsed.")
     application = _direct_child(manifest_roots[0], "application")
-    if application["attributes"].get("android:allowBackup") != "false":
+    if _android_attribute(application["attributes"], "allowBackup") != "false":
         raise SystemExit("Packaged manifest does not enforce android:allowBackup=false.")
 
     _manifest_resource_id(manifest, "fullBackupContent", "backup_rules", resources)
