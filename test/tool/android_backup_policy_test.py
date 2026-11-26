@@ -100,13 +100,17 @@ class AndroidBackupPolicyTests(unittest.TestCase):
             )
 
     def test_both_workflows_run_configuration_and_packaged_apk_gate(self):
+        verifier = (SCRIPTS / "verify_android_backup_policy.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"dump", "xmltree"', verifier)
+        self.assertIn('"dump", "resources"', verifier)
         for workflow_name in ("android-ci.yml", "android-release.yml"):
             workflow = (ROOT / ".github" / "workflows" / workflow_name).read_text(
                 encoding="utf-8"
             )
             self.assertIn("configure_android_backup_policy.py", workflow)
             self.assertIn("verify_android_backup_policy.py", workflow)
-            self.assertIn("dump xmltree", workflow)
             self.assertIn("upload-artifact", workflow)
 
 
