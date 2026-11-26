@@ -220,14 +220,17 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 )
 
 
-    def test_sftp_deploy_uses_openssh_atomic_rename_command(self):
+    def test_sftp_deploy_uses_the_supported_openssh_rename_batch_command(self):
         workflow = self.read_workflow("android-release.yml")
-        self.assertEqual(workflow.count("          posix-rename /"), 4)
+        self.assertEqual(workflow.count("          rename /"), 4)
+        self.assertNotIn("          posix-rename ", workflow)
         self.assertNotIn("rename /incoming/", workflow)
         self.assertIn("Remote working directory: /", workflow)
+        self.assertIn("rename $PROBE_SOURCE $PROBE_TARGET", workflow)
+        self.assertIn("Sending SSH2_FXP_EXTENDED(posix-rename@openssh.com)", workflow)
 
 
-    def test_sftp_deploy_requires_posix_rename_extension_before_upload(self):
+    def test_sftp_preflight_executes_a_real_posix_replace_before_upload(self):
         workflow = self.read_workflow("android-release.yml")
         start = workflow.index(
             "      - name: Publish APK and signed manifest to Oracle over restricted SFTP"
@@ -236,12 +239,20 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         deploy_step = workflow[start:end]
 
         preflight = deploy_step.index("sftp -vv -b -")
-        first_upload = deploy_step.index("put build/app/outputs/flutter-apk/app-release.apk")
-        self.assertLess(preflight, first_upload)
+        probe_rename = deploy_step.index("rename $PROBE_SOURCE $PROBE_TARGET")
+        first_release_upload = deploy_step.index(
+            "put build/app/outputs/flutter-apk/app-release.apk"
+        )
+        self.assertLess(preflight, probe_rename)
+        self.assertLess(probe_rename, first_release_upload)
+        self.assertIn("put /tmp/iqt-sftp-rename-probe-source $PROBE_SOURCE", deploy_step)
+        self.assertIn("put /tmp/iqt-sftp-rename-probe-target $PROBE_TARGET", deploy_step)
+        self.assertIn("Sending SSH2_FXP_EXTENDED(posix-rename@openssh.com)", deploy_step)
         self.assertIn(
-            "posix-rename@openssh.com",
+            "grep -Fq 'Sending SSH2_FXP_EXTENDED(posix-rename@openssh.com)'",
             deploy_step,
         )
+        self.assertIn("trap cleanup_sftp_probe EXIT", deploy_step)
         self.assertIn("refusing to publish", deploy_step)
         self.assertIn("> /tmp/iqt-sftp-capabilities.log 2>&1", deploy_step)
         self.assertIn("Remote working directory: /", deploy_step)
@@ -261,12 +272,13 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn("scp ", deploy_step)
         self.assertNotIn("ssh ", deploy_step)
         self.assertNotIn("ORACLE_DEPLOY_DIR", deploy_step)
-        self.assertEqual(deploy_step.count("posix-rename /"), 4)
+        self.assertEqual(deploy_step.count("          rename /"), 4)
+        self.assertNotIn("          posix-rename ", deploy_step)
         self.assertNotIn("rename /incoming/", deploy_step)
         self.assertIn("put build/app/outputs/flutter-apk/app-release.apk /.iqt-", deploy_step)
-        self.assertIn("posix-rename /.manifest-", deploy_step)
+        self.assertIn("rename /.manifest-", deploy_step)
         self.assertLess(
-            deploy_step.index("posix-rename /.manifest-"),
+            deploy_step.index("rename /.manifest-"),
             deploy_step.index('PUBLIC_BASE="https://'),
         )
 
