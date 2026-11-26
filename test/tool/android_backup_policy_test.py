@@ -81,9 +81,9 @@ class AndroidBackupPolicyTests(unittest.TestCase):
             [
                 "E: manifest",
                 "  E: application",
-                "    A: android:allowBackup(0x01010280)=false",
-                "    A: android:fullBackupContent(0x0101027c)=@0x7f120000",
-                "    A: android:dataExtractionRules(0x010106xx)=@0x7f120001",
+                "    A: http://schemas.android.com/apk/res/android:allowBackup(0x01010280)=false",
+                "    A: http://schemas.android.com/apk/res/android:fullBackupContent(0x0101027c)=@0x7f120000",
+                "    A: http://schemas.android.com/apk/res/android:dataExtractionRules(0x010106xx)=@0x7f120001",
             ]
         )
         legacy = "E: full-backup-content\n" + exclusion_dump(DOMAINS, "  ")
