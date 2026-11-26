@@ -57,3 +57,21 @@ The builder workflow remains available for manual recovery. Run **Actions → IQ
 - Keep Android signing, manifest signing and Oracle deployment credentials in the public builder's `iq-tunnel-production` Environment.
 - Oracle publishing must use the dedicated `iqt-deploy` account, restricted to SFTP with no shell, sudo, or forwarding. Configure `/incoming` as the account's `ChrootDirectory`; from the SFTP client that jailed directory is `/`, so the workflow uploads to paths such as `/manifest.json` (not `/incoming/manifest.json`). The website must expose the host-side `/incoming` directory read-only at `/updates/iq-tunnel/`. The workflow checks that the SFTP-visible working directory is `/` and that POSIX rename is advertised, but this does not prove the host-side mapping: verify the actual account configuration, write access, atomic replacement of an existing file, and HTTPS checksum checks before enabling production dispatch.
 - The public builder's current source mirror and historical Git commits remain public. This workflow makes release builds use the private source revision; it does not erase old public copies or rewrite Git history.
+
+## 6. Mandatory Android in-place upgrade acceptance
+
+A successful CI build is not proof that an installed app can be upgraded without losing its Android Keystore-backed vault. Before approving a stable APK or merging a storage-major-version update, run this checklist on a real Android device using a non-production test profile where possible:
+
+1. Record the installed app's package ID, version/build number, and signing-certificate SHA-256. Do not infer signer identity from the version string.
+2. In the installed app, create at least one recognizable test profile and verify it can be opened/used. Create an encrypted password-protected export and store it outside the app's private storage as a recovery copy.
+3. Build/install the candidate as an **in-place update** over the installed app. Do not uninstall, clear app data, reset the device, or change Android users between steps. Android must accept the update with the same package ID and signing certificate.
+4. Launch the updated app. Verify the pre-existing profile is still present and decrypts correctly; verify the profile's non-secret settings are unchanged.
+5. Create a second profile, force-stop and relaunch the app, then verify both profiles remain readable.
+6. Verify encrypted export/import with the recovery copy on a separate test install or after the original profile checks have passed.
+7. Record device model, Android version, source commit, candidate APK SHA-256, before/after app versions, signer fingerprint, and each observed result.
+
+**Pass criteria:** Android accepts the APK as an update; the original Keystore-backed key remains usable; all pre-existing profiles decrypt; newly saved data survives relaunch; export/import succeeds. Any missing profile, authentication error, unexpected key regeneration, signature mismatch, or install-as-new prompt is a failure and blocks release.
+
+Never use uninstall/reinstall as an upgrade test: uninstalling can remove app-private data and invalidate the test. Do not test a downgrade by installing an older version over the candidate. Keep the existing user installation untouched until its signing lineage and a successful in-place update are established.
+
+This checklist is a manual device gate. Static tests, Flutter tests, and Debug APK CI cannot substitute for it.
