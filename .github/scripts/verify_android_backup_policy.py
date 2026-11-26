@@ -94,16 +94,24 @@ def _manifest_resource_id(dump: str, attribute: str, resource_name: str, resourc
     if not match:
         raise SystemExit(f"Could not resolve the compiled resource ID for android:{attribute}.")
     resource_id = match.group(1).lower()
+    resource_lines = resources.splitlines()
     resource_line = next(
         (
-            item for item in resources.splitlines()
-            if resource_id in item.lower() and f":xml/{resource_name}" in item
+            item for item in resource_lines
+            if resource_id in item.lower() and f"xml/{resource_name}".lower() in item.lower()
         ),
         None,
     )
     if resource_line is None:
+        id_matches = [item.strip() for item in resource_lines if resource_id in item.lower()]
+        name_matches = [
+            item.strip() for item in resource_lines
+            if f"xml/{resource_name}".lower() in item.lower()
+        ]
         raise SystemExit(
-            f"android:{attribute} does not resolve to the packaged xml/{resource_name} resource."
+            f"android:{attribute} resource {resource_id} does not resolve to "
+            f"xml/{resource_name}. AAPT2 lines with ID: {id_matches[:5]!r}; "
+            f"lines with resource name: {name_matches[:5]!r}"
         )
 
 
