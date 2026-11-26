@@ -75,3 +75,11 @@ A successful CI build is not proof that an installed app can be upgraded without
 Never use uninstall/reinstall as an upgrade test: uninstalling can remove app-private data and invalidate the test. Do not test a downgrade by installing an older version over the candidate. Keep the existing user installation untouched until its signing lineage and a successful in-place update are established.
 
 This checklist is a manual device gate. Static tests, Flutter tests, and Debug APK CI cannot substitute for it.
+
+## 7. Android backup and device-transfer policy
+
+The generated Android manifest sets `android:allowBackup="false"`, points legacy devices to `@xml/backup_rules`, and points Android 12+ devices to `@xml/data_extraction_rules`. Both XML resources exclude all nine documented app-storage domains (`root`, `file`, `database`, `sharedpref`, `external`, `device_root`, `device_file`, `device_database`, and `device_sharedpref`) using `path="."`. The Android 12+ rules apply independently to both cloud backup and direct device-to-device transfer.
+
+Some Android 12+ manufacturers may ignore `allowBackup=false` for direct device transfer. The explicit `device-transfer` exclusions are therefore mandatory; the release workflow also inspects the compiled APK with AAPT2 and retains the manifest/resource dump as CI evidence. This static gate does not replace a real device-to-device migration test on supported OEM devices.
+
+IQ Tunnel has no supported iOS companion app, so no cross-platform iOS transfer section is configured. OS backup/device migration is not the supported way to move encrypted VPN profiles. Use the app's password-protected encrypted export/import flow and retain the export outside app-private storage. If restored ciphertext is ever present without its Android Keystore key, the vault must fail closed rather than create a replacement key or overwrite the ciphertext.
