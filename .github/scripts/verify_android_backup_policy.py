@@ -18,11 +18,51 @@ DOMAINS = (
 )
 
 
-def _values(dump: str, attribute: str) -> list[str]:
-    pattern = re.compile(
-        rf'\b{re.escape(attribute)}(?:\([^)]*\))?\s*=\s*(?:"([^"]*)"|([^\s]+))'
+def _parse_xmltree(dump: str) -> list[dict]:
+    roots = []
+    stack = []
+    attribute_pattern = re.compile(
+        r'([^ (]+)(?:\([^)]*\))?\s*=\s*(?:"([^"]*)"|(\S+))'
     )
-    return [quoted if quoted is not None else bare for quoted, bare in pattern.findall(dump)]
+    for line in dump.splitlines():
+        stripped = line.lstrip()
+        indent = len(line) - len(stripped)
+        if stripped.startswith("E: "):
+            while stack and stack[-1]["indent"] >= indent:
+                stack.pop()
+            name = stripped[3:].split(None, 1)[0]
+            node = {"name": name, "indent": indent, "attributes": {}, "children": []}
+            if stack:
+                stack[-1]["children"].append(node)
+            else:
+                roots.append(node)
+            stack.append(node)
+        elif stripped.startswith("A: ") and stack:
+            match = attribute_pattern.match(stripped[3:])
+            if match:
+                key = match.group(1)
+                value = match.group(2) if match.group(2) is not None else match.group(3)
+                stack[-1]["attributes"][key] = value
+    return roots
+
+
+def _direct_child(parent: dict, name: str) -> dict:
+    matches = [child for child in parent["children"] if child["name"] == name]
+    if len(matches) != 1:
+        raise SystemExit(f"Expected exactly one {name} element under {parent['name']}.")
+    return matches[0]
+
+
+def _assert_exclusions(parent: dict, expected_domains: tuple[str, ...], context: str) -> None:
+    excludes = [child for child in parent["children"] if child["name"] == "exclude"]
+    if len(excludes) != len(expected_domains):
+        raise SystemExit(f"{context} must contain exactly {len(expected_domains)} exclude elements.")
+    domains = [node["attributes"].get("domain") for node in excludes]
+    paths = [node["attributes"].get("path") for node in excludes]
+    if set(domains) != set(expected_domains) or len(set(domains)) != len(expected_domains):
+        raise SystemExit(f"{context} must exclude each of the nine storage domains exactly once.")
+    if any(path != "." for path in paths):
+        raise SystemExit(f"{context} must use path='.' for every exclusion.")
 
 
 def _manifest_resource_id(dump: str, attribute: str, resource_name: str, resources: str) -> None:
@@ -51,34 +91,28 @@ def _manifest_resource_id(dump: str, attribute: str, resource_name: str, resourc
 
 
 def validate_dumps(manifest: str, legacy: str, extraction: str, resources: str) -> None:
-    allow_lines = [line for line in manifest.splitlines() if "android:allowBackup" in line]
-    if len(allow_lines) != 1 or not re.search(r'=\s*(?:"false"|false)(?:\s|$)', allow_lines[0]):
+    manifest_roots = _parse_xmltree(manifest)
+    if len(manifest_roots) != 1 or manifest_roots[0]["name"] != "manifest":
+        raise SystemExit("Packaged Android manifest could not be parsed.")
+    application = _direct_child(manifest_roots[0], "application")
+    if application["attributes"].get("android:allowBackup") != "false":
         raise SystemExit("Packaged manifest does not enforce android:allowBackup=false.")
 
     _manifest_resource_id(manifest, "fullBackupContent", "backup_rules", resources)
     _manifest_resource_id(manifest, "dataExtractionRules", "data_extraction_rules", resources)
 
-    if "E: full-backup-content" not in legacy:
+    legacy_roots = _parse_xmltree(legacy)
+    if len(legacy_roots) != 1 or legacy_roots[0]["name"] != "full-backup-content":
         raise SystemExit("Packaged legacy backup_rules.xml has the wrong root element.")
-    legacy_domains = _values(legacy, "domain")
-    legacy_paths = _values(legacy, "path")
-    if len(legacy_domains) != len(DOMAINS) or set(legacy_domains) != set(DOMAINS):
-        raise SystemExit("Packaged legacy backup rules must exclude all nine storage domains exactly once.")
-    if legacy_paths.count(".") != len(DOMAINS):
-        raise SystemExit("Packaged legacy backup rules must use path='.' for all nine exclusions.")
+    _assert_exclusions(legacy_roots[0], DOMAINS, "Legacy backup rules")
 
-    for element in ("E: data-extraction-rules", "E: cloud-backup", "E: device-transfer"):
-        if element not in extraction:
-            raise SystemExit(f"Packaged data extraction rules are missing {element}.")
-    extraction_domains = _values(extraction, "domain")
-    extraction_paths = _values(extraction, "path")
-    if len(extraction_domains) != len(DOMAINS) * 2:
-        raise SystemExit("Packaged cloud/D2D rules must contain exactly eighteen domain exclusions.")
-    for domain in DOMAINS:
-        if extraction_domains.count(domain) != 2:
-            raise SystemExit(f"Packaged cloud/D2D rules must exclude {domain} in both sections.")
-    if extraction_paths.count(".") != len(DOMAINS) * 2:
-        raise SystemExit("Packaged cloud/D2D rules must use path='.' for all exclusions.")
+    extraction_roots = _parse_xmltree(extraction)
+    if len(extraction_roots) != 1 or extraction_roots[0]["name"] != "data-extraction-rules":
+        raise SystemExit("Packaged data_extraction_rules.xml has the wrong root element.")
+    cloud = _direct_child(extraction_roots[0], "cloud-backup")
+    device = _direct_child(extraction_roots[0], "device-transfer")
+    _assert_exclusions(cloud, DOMAINS, "Cloud backup rules")
+    _assert_exclusions(device, DOMAINS, "Device-transfer rules")
 
 
 def verify(apk: Path, aapt2: str, evidence_dir: Path) -> None:
