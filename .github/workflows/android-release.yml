@@ -645,13 +645,13 @@ jobs:
             -oIdentitiesOnly=yes \
             "$ORACLE_USER@$ORACLE_HOST" <<SFTP_BATCH
           put build/app/outputs/flutter-apk/app-release.apk /.iqt-$GITHUB_RUN_ID.apk.tmp
-          rename /.iqt-$GITHUB_RUN_ID.apk.tmp /iq-tunnel-$VERSION-$BUILD_NUMBER.apk
+          posix-rename /.iqt-$GITHUB_RUN_ID.apk.tmp /iq-tunnel-$VERSION-$BUILD_NUMBER.apk
           put build/third-party/xray-core-v26.11.9-source.tar.gz /.iqt-$GITHUB_RUN_ID.xray.tmp
-          rename /.iqt-$GITHUB_RUN_ID.xray.tmp /xray-core-v26.11.9-source.tar.gz
+          posix-rename /.iqt-$GITHUB_RUN_ID.xray.tmp /xray-core-v26.11.9-source.tar.gz
           put build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 /.iqt-$GITHUB_RUN_ID.sha256.tmp
-          rename /.iqt-$GITHUB_RUN_ID.sha256.tmp /xray-core-v26.11.9-source.tar.gz.sha256
+          posix-rename /.iqt-$GITHUB_RUN_ID.sha256.tmp /xray-core-v26.11.9-source.tar.gz.sha256
           put /tmp/iq-update-manifest.json /.manifest-$GITHUB_RUN_ID.tmp
-          rename /.manifest-$GITHUB_RUN_ID.tmp /manifest.json
+          posix-rename /.manifest-$GITHUB_RUN_ID.tmp /manifest.json
           SFTP_BATCH
 
           PUBLIC_BASE="https://mahmoudaljuorany.store/updates/iq-tunnel"
