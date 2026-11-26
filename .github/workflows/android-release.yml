@@ -599,7 +599,7 @@ jobs:
             echo "SFTP account did not start at its jailed root; refusing to publish."
             exit 1
           }
-          grep -Fq 'Server supports extension "posix-rename@openssh.com" revision 1' /tmp/iqt-sftp-capabilities.log || {
+          grep -Fq 'posix-rename@openssh.com' /tmp/iqt-sftp-capabilities.log || {
             echo "Oracle SFTP server does not advertise POSIX rename; refusing to publish."
             exit 1
           }
