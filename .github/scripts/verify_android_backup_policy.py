@@ -82,7 +82,7 @@ def _assert_exclusions(parent: dict, expected_domains: tuple[str, ...], context:
 def _manifest_resource_id(dump: str, attribute: str, resource_name: str, resources: str) -> None:
     lines = [
         line for line in dump.splitlines()
-        if re.search(rf"(?:android:|http://schemas\\.android\\.com/apk/res/android:){re.escape(attribute)}\\(", line)
+        if re.search(rf"(?:android:|http://schemas\.android\.com/apk/res/android:){re.escape(attribute)}\(", line)
     ]
     if len(lines) != 1:
         raise SystemExit(f"APK manifest must contain exactly one android:{attribute} attribute.")
