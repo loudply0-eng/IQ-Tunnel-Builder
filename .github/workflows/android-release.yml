@@ -362,9 +362,11 @@ jobs:
                   if len(raw) > 64 * 1024:
                       raise SystemExit("Published update manifest exceeds 64 KiB.")
                   current = json.loads(raw)
-                  current_build = int(current["build_number"])
-                  if current_build < 0:
-                      raise SystemExit("Published build number is invalid.")
+              raw_current_build = current.get("build_number")
+              # bool is a subclass of int in Python; require an actual JSON integer.
+              if type(raw_current_build) is not int or raw_current_build < 0:
+                  raise SystemExit("Published build number must be a non-negative integer.")
+              current_build = raw_current_build
           except urllib.error.HTTPError as error:
               if error.code != 404 or not error.geturl().startswith("https://"):
                   raise
@@ -447,7 +449,11 @@ jobs:
           if current is not None:
               try:
                   version = current["version"]
-                  current_build = int(current["build_number"])
+                  raw_current_build = current["build_number"]
+                  # Reject floats and booleans instead of silently truncating/coercing them.
+                  if type(raw_current_build) is not int or raw_current_build < 0:
+                      raise ValueError("build_number must be a non-negative JSON integer")
+                  current_build = raw_current_build
                   download_url = current["download_url"]
                   sha256 = str(current["sha256"]).lower()
                   notes = current.get("notes", "")
