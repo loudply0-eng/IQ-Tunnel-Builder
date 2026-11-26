@@ -6,10 +6,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / ".github" / "scripts"
-DOMAINS = {
+DOMAINS = (
     "root", "file", "database", "sharedpref", "external",
     "device_root", "device_file", "device_database", "device_sharedpref",
-}
+)
 
 
 def load_script(name, filename):
@@ -17,6 +17,14 @@ def load_script(name, filename):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def exclusion_dump(domains, indent="    "):
+    return "\n".join(
+        f'{indent}E: exclude\n{indent}  A: domain(0x01010000)="{domain}"\n'
+        f'{indent}  A: path(0x01010000)="."'
+        for domain in domains
+    )
 
 
 class AndroidBackupPolicyTests(unittest.TestCase):
@@ -49,7 +57,7 @@ class AndroidBackupPolicyTests(unittest.TestCase):
             legacy = ET.parse(resources / "backup_rules.xml").getroot()
             self.assertEqual(legacy.tag, "full-backup-content")
             legacy_excludes = legacy.findall("exclude")
-            self.assertEqual({node.get("domain") for node in legacy_excludes}, DOMAINS)
+            self.assertEqual({node.get("domain") for node in legacy_excludes}, set(DOMAINS))
             self.assertEqual(len(legacy_excludes), len(DOMAINS))
             self.assertTrue(all(node.get("path") == "." for node in legacy_excludes))
 
@@ -61,11 +69,11 @@ class AndroidBackupPolicyTests(unittest.TestCase):
             )
             for section in extraction:
                 excludes = section.findall("exclude")
-                self.assertEqual({node.get("domain") for node in excludes}, DOMAINS)
+                self.assertEqual({node.get("domain") for node in excludes}, set(DOMAINS))
                 self.assertEqual(len(excludes), len(DOMAINS))
                 self.assertTrue(all(node.get("path") == "." for node in excludes))
 
-    def test_aapt2_gate_rejects_missing_or_permissive_packaged_rules(self):
+    def test_aapt2_gate_rejects_missing_or_misplaced_packaged_rules(self):
         verifier = load_script(
             "verify_android_backup_policy", "verify_android_backup_policy.py"
         )
@@ -78,19 +86,28 @@ class AndroidBackupPolicyTests(unittest.TestCase):
                 "    A: android:dataExtractionRules(0x010106xx)=@0x7f120001",
             ]
         )
-        legacy = "E: full-backup-content\n" + "\n".join(
-            f'  E: exclude\n    A: domain(0x01010000)="{domain}"\n    A: path(0x01010000)="."'.format(domain=domain)
-            for domain in sorted(DOMAINS)
-        )
-        extraction = "E: data-extraction-rules\n  E: cloud-backup\n  E: device-transfer\n" + "\n".join(
-            f'  E: exclude\n    A: domain(0x01010000)="{domain}"\n    A: path(0x01010000)="."'.format(domain=domain)
-            for _ in range(2) for domain in sorted(DOMAINS)
+        legacy = "E: full-backup-content\n" + exclusion_dump(DOMAINS, "  ")
+        extraction = (
+            "E: data-extraction-rules\n"
+            "  E: cloud-backup\n"
+            + exclusion_dump(DOMAINS, "    ")
+            + "\n  E: device-transfer\n"
+            + exclusion_dump(DOMAINS, "    ")
         )
         resources = (
             "resource 0x7f120000 com.iqtunnel:xml/backup_rules\n"
             "resource 0x7f120001 com.iqtunnel:xml/data_extraction_rules\n"
         )
         verifier.validate_dumps(manifest, legacy, extraction, resources)
+        misplaced = (
+            "E: data-extraction-rules\n"
+            "  E: cloud-backup\n"
+            "  E: device-transfer\n"
+            + exclusion_dump(DOMAINS, "    ")
+            + exclusion_dump(DOMAINS, "    ")
+        )
+        with self.assertRaises(SystemExit):
+            verifier.validate_dumps(manifest, legacy, misplaced, resources)
         with self.assertRaises(SystemExit):
             verifier.validate_dumps(
                 manifest,
