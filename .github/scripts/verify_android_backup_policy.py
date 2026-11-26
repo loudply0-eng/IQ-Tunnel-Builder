@@ -20,7 +20,7 @@ DOMAINS = (
 
 def _values(dump: str, attribute: str) -> list[str]:
     pattern = re.compile(
-        rf"\\b{re.escape(attribute)}(?:\\([^)]*\\))?\\s*=\\s*(?:\"([^\"]*)\"|([^\\s]+))"
+        rf'\b{re.escape(attribute)}(?:\([^)]*\))?\s*=\s*(?:"([^"]*)"|([^\s]+))'
     )
     return [quoted if quoted is not None else bare for quoted, bare in pattern.findall(dump)]
 
@@ -52,7 +52,7 @@ def _manifest_resource_id(dump: str, attribute: str, resource_name: str, resourc
 
 def validate_dumps(manifest: str, legacy: str, extraction: str, resources: str) -> None:
     allow_lines = [line for line in manifest.splitlines() if "android:allowBackup" in line]
-    if len(allow_lines) != 1 or not re.search(r"=\\s*(?:\"false\"|false)(?:\\s|$)", allow_lines[0]):
+    if len(allow_lines) != 1 or not re.search(r'=\s*(?:"false"|false)(?:\s|$)', allow_lines[0]):
         raise SystemExit("Packaged manifest does not enforce android:allowBackup=false.")
 
     _manifest_resource_id(manifest, "fullBackupContent", "backup_rules", resources)
