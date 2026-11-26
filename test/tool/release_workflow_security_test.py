@@ -328,5 +328,13 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("cmp --silent /tmp/iq-update-manifest.json /tmp/iq-update-manifest-published.json", publish_step)
 
 
+    def test_published_manifest_build_number_must_be_a_json_integer(self):
+        workflow = self.read_workflow("android-release.yml")
+        # Validate both the version-selection and pre-publish verification paths.
+        self.assertEqual(workflow.count("type(raw_current_build) is not int"), 2)
+        self.assertEqual(workflow.count("raw_current_build < 0"), 2)
+        self.assertNotIn('int(current["build_number"])', workflow)
+
+
 if __name__ == "__main__":
     unittest.main()
