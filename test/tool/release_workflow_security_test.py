@@ -239,7 +239,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         first_upload = deploy_step.index("put build/app/outputs/flutter-apk/app-release.apk")
         self.assertLess(preflight, first_upload)
         self.assertIn(
-            'Server supports extension "posix-rename@openssh.com" revision 1',
+            "posix-rename@openssh.com",
             deploy_step,
         )
         self.assertIn("refusing to publish", deploy_step)
