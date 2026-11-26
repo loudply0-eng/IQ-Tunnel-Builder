@@ -44,7 +44,7 @@ Use GitHub's private vulnerability reporting facility from the repository Securi
 - Local VPN profile data is stored as authenticated AES-256-GCM ciphertext.
 - The random local data key is held through `flutter_secure_storage` using Android Keystore-backed protection.
 - Password-protected exports use a fresh salt and nonce, PBKDF2-HMAC-SHA256, and AES-256-GCM. Wrong passwords and modified ciphertext must fail closed.
-- Android auto-backup is disabled to avoid restoring ciphertext without the Keystore-protected key.
+- Android cloud backup is disabled, and the legacy plus Android 12+ cloud/device-transfer XML policies explicitly exclude all nine app-storage domains. Some OEMs may still behave differently for device-to-device migration, so real-device transfer validation remains mandatory. OS migration is not the supported profile-move path; use password-protected encrypted export/import. If ciphertext is restored without its Android Keystore key, the vault must fail closed without generating a replacement key.
 - Do not log passwords, UUIDs, subscription URLs, private keys, VPN payloads, router credentials, ubus session identifiers, or raw RPC payloads.
 
 ## Updates
