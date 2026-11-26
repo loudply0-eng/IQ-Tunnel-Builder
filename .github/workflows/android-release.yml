@@ -590,23 +590,48 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
           ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null
 
-          # Require OpenSSH's POSIX rename extension before any upload. The normal
-          # sftp "rename" command uses this extension when the server advertises it.
+          # The OpenSSH batch command is "rename", not "posix-rename".
+          # The OpenSSH client automatically uses posix-rename@openssh.com when
+          # the server advertises it. Probe by replacing an existing zero-byte
+          # destination and assert that the client actually sends the extension.
+          PROBE_SOURCE="/.iqt-$GITHUB_RUN_ID.rename-source.tmp"
+          PROBE_TARGET="/.iqt-$GITHUB_RUN_ID.rename-target.tmp"
+          : > /tmp/iqt-sftp-rename-probe-source
+          : > /tmp/iqt-sftp-rename-probe-target
+          cleanup_sftp_probe() {
+            sftp -b - \
+              -i ~/.ssh/id_ed25519 \
+              -oBatchMode=yes \
+              -oStrictHostKeyChecking=yes \
+              -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
+              -oIdentitiesOnly=yes \
+              "$ORACLE_USER@$ORACLE_HOST" >/dev/null 2>&1 <<SFTP_CLEANUP || true
+          -rm $PROBE_SOURCE
+          -rm $PROBE_TARGET
+          SFTP_CLEANUP
+            rm -f /tmp/iqt-sftp-rename-probe-source /tmp/iqt-sftp-rename-probe-target
+          }
+          trap cleanup_sftp_probe EXIT
+
           sftp -vv -b - \
             -i ~/.ssh/id_ed25519 \
             -oBatchMode=yes \
             -oStrictHostKeyChecking=yes \
             -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -oIdentitiesOnly=yes \
-            "$ORACLE_USER@$ORACLE_HOST" > /tmp/iqt-sftp-capabilities.log 2>&1 <<'SFTP_PROBE'
+            "$ORACLE_USER@$ORACLE_HOST" > /tmp/iqt-sftp-capabilities.log 2>&1 <<SFTP_PROBE
           pwd
+          put /tmp/iqt-sftp-rename-probe-source $PROBE_SOURCE
+          put /tmp/iqt-sftp-rename-probe-target $PROBE_TARGET
+          rename $PROBE_SOURCE $PROBE_TARGET
+          rm $PROBE_TARGET
           SFTP_PROBE
           grep -Fq 'Remote working directory: /' /tmp/iqt-sftp-capabilities.log || {
             echo "SFTP account did not start at its jailed root; refusing to publish."
             exit 1
           }
-          grep -Fq 'posix-rename@openssh.com' /tmp/iqt-sftp-capabilities.log || {
-            echo "Oracle SFTP server does not advertise POSIX rename; refusing to publish."
+          grep -Fq 'Sending SSH2_FXP_EXTENDED(posix-rename@openssh.com)' /tmp/iqt-sftp-capabilities.log || {
+            echo "OpenSSH did not perform POSIX replacement during the SFTP preflight; refusing to publish."
             exit 1
           }
 
@@ -651,13 +676,13 @@ jobs:
             -oIdentitiesOnly=yes \
             "$ORACLE_USER@$ORACLE_HOST" <<SFTP_BATCH
           put build/app/outputs/flutter-apk/app-release.apk /.iqt-$GITHUB_RUN_ID.apk.tmp
-          posix-rename /.iqt-$GITHUB_RUN_ID.apk.tmp /iq-tunnel-$VERSION-$BUILD_NUMBER.apk
+          rename /.iqt-$GITHUB_RUN_ID.apk.tmp /iq-tunnel-$VERSION-$BUILD_NUMBER.apk
           put build/third-party/xray-core-v26.11.9-source.tar.gz /.iqt-$GITHUB_RUN_ID.xray.tmp
-          posix-rename /.iqt-$GITHUB_RUN_ID.xray.tmp /xray-core-v26.11.9-source.tar.gz
+          rename /.iqt-$GITHUB_RUN_ID.xray.tmp /xray-core-v26.11.9-source.tar.gz
           put build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 /.iqt-$GITHUB_RUN_ID.sha256.tmp
-          posix-rename /.iqt-$GITHUB_RUN_ID.sha256.tmp /xray-core-v26.11.9-source.tar.gz.sha256
+          rename /.iqt-$GITHUB_RUN_ID.sha256.tmp /xray-core-v26.11.9-source.tar.gz.sha256
           put /tmp/iq-update-manifest.json /.manifest-$GITHUB_RUN_ID.tmp
-          posix-rename /.manifest-$GITHUB_RUN_ID.tmp /manifest.json
+          rename /.manifest-$GITHUB_RUN_ID.tmp /manifest.json
           SFTP_BATCH
 
           PUBLIC_BASE="https://mahmoudaljuorany.store/updates/iq-tunnel"
