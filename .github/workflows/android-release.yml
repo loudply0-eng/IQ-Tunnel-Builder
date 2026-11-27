@@ -590,12 +590,14 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
           ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null
 
-          # The OpenSSH batch command is "rename", not "posix-rename".
-          # The OpenSSH client automatically uses posix-rename@openssh.com when
-          # the server advertises it. Probe by replacing an existing zero-byte
-          # destination and assert that the client actually sends the extension.
-          PROBE_SOURCE="/.iqt-$GITHUB_RUN_ID.rename-source.tmp"
-          PROBE_TARGET="/.iqt-$GITHUB_RUN_ID.rename-target.tmp"
+          # OpenSSH requires the ChrootDirectory itself to remain root-owned
+          # and non-writable. The dedicated iqt-deploy account therefore writes
+          # only inside the pre-created writable /publish child directory.
+          # The OpenSSH batch command is "rename", not "posix-rename"; the client
+          # automatically sends the POSIX extension when the server supports it.
+          PUBLISH_DIR="/publish"
+          PROBE_SOURCE="$PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.rename-source.tmp"
+          PROBE_TARGET="$PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.rename-target.tmp"
           : > /tmp/iqt-sftp-rename-probe-source
           : > /tmp/iqt-sftp-rename-probe-target
           cleanup_sftp_probe() {
@@ -621,6 +623,8 @@ jobs:
             -oIdentitiesOnly=yes \
             "$ORACLE_USER@$ORACLE_HOST" > /tmp/iqt-sftp-capabilities.log 2>&1 <<SFTP_PROBE
           pwd
+          ls -ld /
+          ls -ld $PUBLISH_DIR
           put /tmp/iqt-sftp-rename-probe-source $PROBE_SOURCE
           put /tmp/iqt-sftp-rename-probe-target $PROBE_TARGET
           rename $PROBE_SOURCE $PROBE_TARGET
@@ -675,14 +679,14 @@ jobs:
             -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -oIdentitiesOnly=yes \
             "$ORACLE_USER@$ORACLE_HOST" <<SFTP_BATCH
-          put build/app/outputs/flutter-apk/app-release.apk /.iqt-$GITHUB_RUN_ID.apk.tmp
-          rename /.iqt-$GITHUB_RUN_ID.apk.tmp /iq-tunnel-$VERSION-$BUILD_NUMBER.apk
-          put build/third-party/xray-core-v26.11.9-source.tar.gz /.iqt-$GITHUB_RUN_ID.xray.tmp
-          rename /.iqt-$GITHUB_RUN_ID.xray.tmp /xray-core-v26.11.9-source.tar.gz
-          put build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 /.iqt-$GITHUB_RUN_ID.sha256.tmp
-          rename /.iqt-$GITHUB_RUN_ID.sha256.tmp /xray-core-v26.11.9-source.tar.gz.sha256
-          put /tmp/iq-update-manifest.json /.manifest-$GITHUB_RUN_ID.tmp
-          rename /.manifest-$GITHUB_RUN_ID.tmp /manifest.json
+          put build/app/outputs/flutter-apk/app-release.apk $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.apk.tmp
+          rename $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.apk.tmp $PUBLISH_DIR/iq-tunnel-$VERSION-$BUILD_NUMBER.apk
+          put build/third-party/xray-core-v26.11.9-source.tar.gz $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.xray.tmp
+          rename $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.xray.tmp $PUBLISH_DIR/xray-core-v26.11.9-source.tar.gz
+          put build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.sha256.tmp
+          rename $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.sha256.tmp $PUBLISH_DIR/xray-core-v26.11.9-source.tar.gz.sha256
+          put /tmp/iq-update-manifest.json $PUBLISH_DIR/.manifest-$GITHUB_RUN_ID.tmp
+          rename $PUBLISH_DIR/.manifest-$GITHUB_RUN_ID.tmp $PUBLISH_DIR/manifest.json
           SFTP_BATCH
 
           PUBLIC_BASE="https://mahmoudaljuorany.store/updates/iq-tunnel"
