@@ -50,7 +50,11 @@ class CleartextPolicyTests(unittest.TestCase):
 
     def test_update_client_rejects_http_and_downgrade_redirects(self):
         source = (ROOT / "lib" / "main.dart").read_text(encoding="utf-8")
-        self.assertIn("Future<http.StreamedResponse> _sendHttpsGet(", source)
+        self.assertIn("Future<_UpdateHttpResponse> _sendHttpsGet(", source)
+        self.assertIn("http.AbortableRequest(", source)
+        self.assertIn("abortTrigger: abortTrigger.future", source)
+        self.assertIn("abortTrigger.complete()", source)
+        self.assertIn("response.stream.timeout(", source)
         self.assertRegex(
             source,
             r"if\s*\(uri\.scheme\s*!=\s*'https'",
