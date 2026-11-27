@@ -133,7 +133,14 @@ def _manifest_resource_id(dump: str, attribute: str, resource_name: str, resourc
         )
 
 
-def validate_dumps(manifest: str, legacy: str, extraction: str, resources: str) -> None:
+def validate_dumps(
+    manifest: str,
+    legacy: str,
+    extraction: str,
+    resources: str,
+    *,
+    expect_not_debuggable: bool = False,
+) -> None:
     manifest_roots = _parse_xmltree(manifest)
     if len(manifest_roots) != 1 or manifest_roots[0]["name"] != "manifest":
         raise SystemExit("Packaged Android manifest could not be parsed.")
@@ -141,6 +148,10 @@ def validate_dumps(manifest: str, legacy: str, extraction: str, resources: str) 
     application = _direct_child(manifest_roots[0], "application")
     if _android_attribute(application["attributes"], "allowBackup") != "false":
         raise SystemExit("Packaged manifest does not enforce android:allowBackup=false.")
+    if expect_not_debuggable and _android_attribute(
+        application["attributes"], "debuggable"
+    ) == "true":
+        raise SystemExit("Release APK is marked android:debuggable=true.")
 
     _manifest_resource_id(manifest, "fullBackupContent", "backup_rules", resources)
     _manifest_resource_id(manifest, "dataExtractionRules", "data_extraction_rules", resources)
@@ -159,7 +170,13 @@ def validate_dumps(manifest: str, legacy: str, extraction: str, resources: str) 
     _assert_exclusions(device, DOMAINS, "Device-transfer rules")
 
 
-def verify(apk: Path, aapt2: str, evidence_dir: Path) -> None:
+def verify(
+    apk: Path,
+    aapt2: str,
+    evidence_dir: Path,
+    *,
+    expect_not_debuggable: bool = False,
+) -> None:
     evidence_dir.mkdir(parents=True, exist_ok=True)
     files = {
         "manifest": "AndroidManifest.xml",
@@ -191,6 +208,7 @@ def verify(apk: Path, aapt2: str, evidence_dir: Path) -> None:
         dumps["legacy"],
         dumps["extraction"],
         resources_result.stdout,
+        expect_not_debuggable=expect_not_debuggable,
     )
     (evidence_dir / "verification.txt").write_text(
         "PASS: packaged manifest excludes all nine storage domains from backup/transfer "
@@ -205,10 +223,20 @@ def main() -> None:
     parser.add_argument("--apk", required=True, type=Path)
     parser.add_argument("--aapt2", required=True)
     parser.add_argument("--evidence-dir", required=True, type=Path)
+    parser.add_argument(
+        "--expect-not-debuggable",
+        action="store_true",
+        help="Fail if the compiled application manifest enables android:debuggable.",
+    )
     args = parser.parse_args()
     if not args.apk.is_file():
         raise SystemExit(f"APK does not exist: {args.apk}")
-    verify(args.apk, args.aapt2, args.evidence_dir)
+    verify(
+        args.apk,
+        args.aapt2,
+        args.evidence_dir,
+        expect_not_debuggable=args.expect_not_debuggable,
+    )
 
 
 if __name__ == "__main__":

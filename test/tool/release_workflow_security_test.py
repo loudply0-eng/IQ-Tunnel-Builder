@@ -303,14 +303,14 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         apk_hash_check = deploy_step.index(
             'test "$ACTUAL_APK_SHA256" = "$EXPECTED_APK_SHA256"'
         )
-        xray_head_check = deploy_step.index(
-            '--head "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz.sha256"'
+        xray_hash_check = deploy_step.index(
+            "Verified published Xray source archive SHA-256"
         )
         manifest_compare = deploy_step.index(
             "cmp --silent /tmp/iq-update-manifest.json /tmp/iq-update-manifest-published.json"
         )
         self.assertLess(apk_hash_check, manifest_publish)
-        self.assertLess(xray_head_check, manifest_publish)
+        self.assertLess(xray_hash_check, manifest_publish)
         self.assertLess(manifest_publish, manifest_compare)
 
 
@@ -362,6 +362,10 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
         self.assertIn('"$AAPT" dump badging "$APK"', package_step)
         self.assertIn("package: name='com.iqtunnel.iq_tunnel'", package_step)
+        self.assertIn("EXPECTED_VERSION", package_step)
+        self.assertIn("EXPECTED_BUILD_NUMBER", package_step)
+        self.assertIn("versionName='$EXPECTED_VERSION'", package_step)
+        self.assertIn("versionCode='$EXPECTED_BUILD_NUMBER'", package_step)
         self.assertIn("apksigner", signer_step)
         self.assertIn("verify --verbose --print-certs", signer_step)
         self.assertIn(
@@ -388,8 +392,14 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         apk_hash_check = publish_step.index(
             'test "$ACTUAL_APK_SHA256" = "$EXPECTED_APK_SHA256"'
         )
-        xray_check = publish_step.index(
-            '--head "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz"'
+        xray_archive_download = publish_step.index(
+            '"$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz" -o /tmp/iq-xray-core-published.tar.gz'
+        )
+        xray_sidecar_download = publish_step.index(
+            '"$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz.sha256" -o /tmp/iq-xray-core-published.tar.gz.sha256'
+        )
+        xray_hash_check = publish_step.index(
+            "Published Xray source archive SHA-256 does not match"
         )
         manifest_upload = publish_step.index(
             "put /tmp/iq-update-manifest.json $PUBLISH_DIR/.manifest-"
@@ -403,7 +413,9 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             first_sftp_batch,
         )
         self.assertLess(apk_hash_check, manifest_upload)
-        self.assertLess(xray_check, manifest_upload)
+        self.assertLess(xray_archive_download, xray_sidecar_download)
+        self.assertLess(xray_sidecar_download, xray_hash_check)
+        self.assertLess(xray_hash_check, manifest_upload)
         self.assertLess(manifest_upload, manifest_compare)
         self.assertIn("SFTP_MANIFEST", publish_step)
 
@@ -444,6 +456,20 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         vault_gate = release.index("python3 .github/scripts/verify_vault_fail_closed.py")
         self.assertLess(source_copy, vault_gate)
 
+    def test_release_workflows_reject_debuggable_apks_and_check_version_identity(self):
+        for workflow_name in ("android-release.yml", "android-signed-artifact.yml"):
+            workflow = self.read_workflow(workflow_name)
+            self.assertIn("--expect-not-debuggable", workflow)
+            self.assertIn("versionName='$EXPECTED_VERSION'", workflow)
+            self.assertIn("versionCode='$EXPECTED_BUILD_NUMBER'", workflow)
+
+        verifier = (ROOT / ".github" / "scripts" / "verify_android_backup_policy.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("--expect-not-debuggable", verifier)
+        self.assertIn("Release APK is marked android:debuggable=true", verifier)
+
+
     def test_signed_artifact_workflow_enforces_packaged_backup_policy_and_identity(self):
         workflow = self.read_workflow("android-signed-artifact.yml")
         configure = workflow.index(
@@ -462,6 +488,9 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertLess(artifact, signed_apk)
         self.assertIn("package: name='com.iqtunnel.iq_tunnel'", workflow)
         self.assertIn("retention-days: 30", workflow)
+        self.assertIn("--expect-not-debuggable", workflow)
+        self.assertIn("versionName='$EXPECTED_VERSION'", workflow)
+        self.assertIn("versionCode='$EXPECTED_BUILD_NUMBER'", workflow)
 
 
 if __name__ == "__main__":

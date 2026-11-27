@@ -396,7 +396,8 @@ jobs:
           python3 .github/scripts/verify_android_backup_policy.py \
             --apk "$APK" \
             --aapt2 "$AAPT2" \
-            --evidence-dir build/android-backup-policy-evidence
+            --evidence-dir build/android-backup-policy-evidence \
+            --expect-not-debuggable
 
       - name: Verify Android package identity
         run: |
@@ -405,8 +406,28 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
           test -n "$AAPT"
           BADGING="$("$AAPT" dump badging "$APK")"
-          printf '%s\\n' "$BADGING" | grep -Fq "package: name='com.iqtunnel.iq_tunnel'" || {
+          VERSION_METADATA="$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+          match = re.search(r"^version:\\s*([0-9.]+)\\+([0-9]+)\\s*$", Path("pubspec.yaml").read_text(), re.M)
+          if not match:
+              raise SystemExit("pubspec.yaml version must use version+buildNumber")
+          print(match.group(1), match.group(2))
+          PY
+          )"
+          EXPECTED_VERSION="${VERSION_METADATA%% *}"
+          EXPECTED_BUILD_NUMBER="${VERSION_METADATA##* }"
+          test -n "$EXPECTED_VERSION" && test -n "$EXPECTED_BUILD_NUMBER"
+          printf '%s\n' "$BADGING" | grep -Fq "package: name='com.iqtunnel.iq_tunnel'" || {
             echo "Signed APK applicationId does not match the established IQ Tunnel package identity."
+            exit 1
+          }
+          printf '%s\n' "$BADGING" | grep -Fq "versionName='$EXPECTED_VERSION'" || {
+            echo "Signed APK versionName does not match pubspec.yaml."
+            exit 1
+          }
+          printf '%s\n' "$BADGING" | grep -Fq "versionCode='$EXPECTED_BUILD_NUMBER'" || {
+            echo "Signed APK versionCode does not match pubspec.yaml build number."
             exit 1
           }
 

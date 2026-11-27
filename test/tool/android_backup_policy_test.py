@@ -114,7 +114,24 @@ class AndroidBackupPolicyTests(unittest.TestCase):
             "resource 0x7f120000 com.iqtunnel:xml/backup_rules\n"
             "resource 0x7f120001 com.iqtunnel:xml/data_extraction_rules\n"
         )
-        verifier.validate_dumps(manifest, legacy, extraction, resources)
+        verifier.validate_dumps(
+            manifest, legacy, extraction, resources,
+            expect_not_debuggable=True,
+        )
+        debug_manifest = manifest.replace(
+            "  E: application",
+            "  E: application\\n"
+            "    A: http://schemas.android.com/apk/res/android:debuggable(0x0101000f)=true",
+            1,
+        )
+        with self.assertRaises(SystemExit):
+            verifier.validate_dumps(
+                debug_manifest, legacy, extraction, resources,
+                expect_not_debuggable=True,
+            )
+        # Debug CI deliberately uses the default (permissive) mode.
+        verifier.validate_dumps(debug_manifest, legacy, extraction, resources)
+
         for permission in verifier.FORBIDDEN_MEDIA_PERMISSIONS:
             with self.subTest(permission=permission):
                 permission_node = (

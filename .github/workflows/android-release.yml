@@ -395,7 +395,8 @@ jobs:
           python3 .github/scripts/verify_android_backup_policy.py \
             --apk "$APK" \
             --aapt2 "$AAPT2" \
-            --evidence-dir build/android-backup-policy-evidence
+            --evidence-dir build/android-backup-policy-evidence \
+            --expect-not-debuggable
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         name: Upload Android backup-policy verification evidence
@@ -515,6 +516,9 @@ jobs:
           PY
 
       - name: Verify Android package identity
+        env:
+          EXPECTED_VERSION: ${{ steps.release_meta.outputs.version }}
+          EXPECTED_BUILD_NUMBER: ${{ steps.release_meta.outputs.build_number }}
         run: |
           set -euo pipefail
           APK=build/app/outputs/flutter-apk/app-release.apk
@@ -523,6 +527,14 @@ jobs:
           BADGING="$("$AAPT" dump badging "$APK")"
           printf '%s\n' "$BADGING" | grep -Fq "package: name='com.iqtunnel.iq_tunnel'" || {
             echo "Release APK applicationId does not match the package identity established by the reviewed CI APK."
+            exit 1
+          }
+          printf '%s\n' "$BADGING" | grep -Fq "versionName='$EXPECTED_VERSION'" || {
+            echo "Release APK versionName does not match release metadata."
+            exit 1
+          }
+          printf '%s\n' "$BADGING" | grep -Fq "versionCode='$EXPECTED_BUILD_NUMBER'" || {
+            echo "Release APK versionCode does not match the monotonic build number."
             exit 1
           }
 
@@ -730,8 +742,43 @@ jobs:
             echo "Published APK SHA-256 does not match the locally built APK."
             exit 1
           }
-          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz" >/dev/null
-          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz.sha256" >/dev/null
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 300 "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz" -o /tmp/iq-xray-core-published.tar.gz
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 -H 'Cache-Control: no-cache, no-store' "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz.sha256" -o /tmp/iq-xray-core-published.tar.gz.sha256
+          python3 - <<'PY'
+          import hashlib
+          import re
+          from pathlib import Path
+
+          local_sidecar = Path("build/third-party/xray-core-v26.11.9-source.tar.gz.sha256")
+          published_sidecar = Path("/tmp/iq-xray-core-published.tar.gz.sha256")
+          published_archive = Path("/tmp/iq-xray-core-published.tar.gz")
+
+          def read_digest(path: Path) -> str:
+              lines = path.read_text(encoding="ascii").splitlines()
+              if len(lines) != 1:
+                  raise SystemExit(f"Checksum sidecar must contain exactly one line: {path}")
+              fields = lines[0].split()
+              if not fields or not re.fullmatch(r"[0-9a-f]{64}", fields[0]):
+                  raise SystemExit(f"Checksum sidecar contains an invalid SHA-256: {path}")
+              return fields[0]
+
+          expected = read_digest(local_sidecar)
+          served = read_digest(published_sidecar)
+          if served != expected:
+              raise SystemExit("Published Xray SHA-256 sidecar does not match the local release sidecar.")
+
+          digest = hashlib.sha256()
+          with published_archive.open("rb") as stream:
+              while True:
+                  chunk = stream.read(1024 * 1024)
+                  if not chunk:
+                      break
+                  digest.update(chunk)
+          actual = digest.hexdigest()
+          if actual != expected:
+              raise SystemExit("Published Xray source archive SHA-256 does not match the locally built archive.")
+          print(f"Verified published Xray source archive SHA-256: {actual}")
+          PY
           # Keep the old manifest live until the new APK is publicly served
           # with the expected positive Content-Length and matching SHA-256.
           # Publishing the signed manifest is the final activation step.
@@ -750,4 +797,4 @@ jobs:
 
       - name: Remove signing material
         if: always()
-        run: rm -f android/key.properties android/app/upload-keystore.jks ~/.ssh/id_ed25519 /tmp/iq-update-private.pem /tmp/iq-update-public.pem /tmp/iq-update-payload.json /tmp/iq-update-manifest-base.json /tmp/iq-update-signature.bin /tmp/iq-update-manifest.json /tmp/iq-update-apk.sha256 /tmp/iq-update-apk-published.apk /tmp/iq-update-apk-headers.txt /tmp/iqt-sftp-capabilities.log
+        run: rm -f android/key.properties android/app/upload-keystore.jks ~/.ssh/id_ed25519 /tmp/iq-update-private.pem /tmp/iq-update-public.pem /tmp/iq-update-payload.json /tmp/iq-update-manifest-base.json /tmp/iq-update-signature.bin /tmp/iq-update-manifest.json /tmp/iq-update-apk.sha256 /tmp/iq-update-apk-published.apk /tmp/iq-update-apk-headers.txt /tmp/iq-xray-core-published.tar.gz /tmp/iq-xray-core-published.tar.gz.sha256 /tmp/iqt-sftp-capabilities.log
