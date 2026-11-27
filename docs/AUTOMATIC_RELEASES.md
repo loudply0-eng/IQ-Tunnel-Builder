@@ -23,9 +23,13 @@ There is no active automatic release behavior at present. Source changes on priv
 
 Any future automatic-release implementation must dispatch an exact private source commit SHA, verify that it is an ancestor of private `main`, keep the production Environment approval gate, and pass the same vault, backup, signing, SFTP, HTTPS and real-device acceptance gates as a manual release. Do not weaken the manual confirmation or Environment protection to enable automation.
 
-## 4. Manual release
+## 4. Manual release and signed artifact
 
-The Builder workflow remains available for a controlled manual release. Run **Actions → IQ Tunnel Public Builder — Signed Release** on Builder branch `main`, set `confirm_release=true`, and set `source_ref` to `main` or an exact 40-character private source SHA. The workflow rejects a SHA that is not reachable from private `main`.
+The Builder workflows are available for controlled manual use:
+- **Actions → IQ Tunnel Public Builder — Signed Release** on Builder branch `main`: set `confirm_release=true` and `source_ref` to `main` or an exact 40-character private source SHA.
+- **Actions → IQ Tunnel Signed Release APK Artifact** on Builder branch `main`: set `confirm_build=true` and select the same kind of private `source_ref`.
+
+Both workflows use the read-only private-source deploy key, verify that the selected commit belongs to private `main` history, and build from the copied private source. Neither accepts an arbitrary public Builder mirror as the release source. The signed-artifact workflow creates a signed APK artifact only; the primary signed-release workflow is the one that deploys the OTA APK and manifest to Oracle. Both remain protected by the `iq-tunnel-production` Environment approval.
 
 ## 5. Separation and security
 
