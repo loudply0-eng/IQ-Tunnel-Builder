@@ -353,7 +353,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         )
         self.assertIn("test \"$SIGNER_SHA256\" = \"$EXPECTED_SIGNER_SHA256\"", signer_step)
 
-    def test_release_verifies_published_apk_http_size_hash_and_manifest(self):
+    def test_release_verifies_apk_before_publishing_signed_manifest(self):
         workflow = self.read_workflow("android-release.yml")
         publish_step = workflow.split(
             "- name: Publish APK and signed manifest to Oracle over restricted SFTP",
@@ -367,7 +367,25 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("int(lengths[0]) != actual_size", publish_step)
         self.assertIn("ACTUAL_APK_SHA256", publish_step)
         self.assertIn("EXPECTED_APK_SHA256", publish_step)
-        self.assertIn("cmp --silent /tmp/iq-update-manifest.json /tmp/iq-update-manifest-published.json", publish_step)
+
+        apk_hash_check = publish_step.index(
+            'test "$ACTUAL_APK_SHA256" = "$EXPECTED_APK_SHA256"'
+        )
+        xray_check = publish_step.index(
+            '--head "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz"'
+        )
+        manifest_upload = publish_step.index(
+            "put /tmp/iq-update-manifest.json $PUBLISH_DIR/.manifest-"
+        )
+        manifest_compare = publish_step.index(
+            "cmp --silent /tmp/iq-update-manifest.json /tmp/iq-update-manifest-published.json"
+        )
+        first_sftp_batch = publish_step.split("SFTP_BATCH", 1)[0]
+        self.assertNotIn("manifest.json", first_sftp_batch)
+        self.assertLess(apk_hash_check, manifest_upload)
+        self.assertLess(xray_check, manifest_upload)
+        self.assertLess(manifest_upload, manifest_compare)
+        self.assertIn("SFTP_MANIFEST", publish_step)
 
 
     def test_published_manifest_build_number_must_be_a_json_integer(self):
