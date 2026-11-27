@@ -220,10 +220,14 @@ class UpdateService {
     http.Client? client,
     Duration requestTimeout = const Duration(seconds: 20),
     Duration downloadTimeout = const Duration(seconds: 30),
+    String? publicKeyBase64,
+    Future<Directory> Function()? temporaryDirectoryProvider,
   })  : _client = client ?? http.Client(),
         _ownsClient = client == null,
         _requestTimeout = requestTimeout,
-        _downloadTimeout = downloadTimeout;
+        _downloadTimeout = downloadTimeout,
+        _publicKeyBase64 = publicKeyBase64 ?? updatePublicKeyBase64,
+        _temporaryDirectoryProvider = temporaryDirectoryProvider ?? getTemporaryDirectory;
 
   static const int _maxManifestBytes = 64 * 1024;
   static const int _maxApkBytes = 500 * 1024 * 1024;
@@ -232,6 +236,8 @@ class UpdateService {
   final bool _ownsClient;
   final Duration _requestTimeout;
   final Duration _downloadTimeout;
+  final String _publicKeyBase64;
+  final Future<Directory> Function() _temporaryDirectoryProvider;
 
   Future<_UpdateHttpResponse> _sendHttpsGet(
     Uri initialUri,
@@ -354,7 +360,7 @@ class UpdateService {
   }
 
   Future<void> _verifyManifest(UpdateInfo update) async {
-    final keyBytes = base64Decode(updatePublicKeyBase64);
+    final keyBytes = base64Decode(_publicKeyBase64);
     final signatureBytes = base64Decode(update.signature);
     if (keyBytes.length != 32 || signatureBytes.length != 64) {
       throw const FormatException('توقيع التحديث أو مفتاحه غير صالح.');
@@ -375,6 +381,8 @@ class UpdateService {
     );
     if (!valid) throw const FormatException('تعذر التحقق من توقيع التحديث.');
   }
+
+  Future<void> verifyManifestForTesting(UpdateInfo update) => _verifyManifest(update);
 
   Future<File> download(
     UpdateInfo update, {
@@ -405,7 +413,7 @@ class UpdateService {
 
     late final Directory directory;
     try {
-      directory = await getTemporaryDirectory();
+      directory = await _temporaryDirectoryProvider();
     } catch (_) {
       await response.cancelBody();
       rethrow;
