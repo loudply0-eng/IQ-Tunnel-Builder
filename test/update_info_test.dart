@@ -250,6 +250,7 @@ void main() {
       throwsA(isA<FormatException>()),
     );
     expect(client.bodyCancelled, isTrue);
+    await Future<void>.delayed(Duration.zero);
     expect(client.aborted, isTrue);
   });
 }
