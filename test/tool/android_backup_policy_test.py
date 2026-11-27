@@ -167,6 +167,45 @@ class AndroidBackupPolicyTests(unittest.TestCase):
                 resources,
             )
 
+    def test_resource_xml_paths_are_resolved_from_compiled_resource_table(self):
+        verifier = load_script(
+            "verify_android_backup_policy", "verify_android_backup_policy.py"
+        )
+        manifest = "\n".join(
+            [
+                "E: manifest",
+                "  E: application",
+                "    A: http://schemas.android.com/apk/res/android:fullBackupContent(0x0101027c)=@0x7f120000",
+                "    A: http://schemas.android.com/apk/res/android:dataExtractionRules(0x010106xx)=@0x7f120001",
+            ]
+        )
+        resources = "\n".join(
+            [
+                "resource 0x7f120000 com.iqtunnel:xml/backup_rules",
+                "  () (file) res/a.xml type=XML",
+                "resource 0x7f120001 com.iqtunnel:xml/data_extraction_rules",
+                "  () (file) res/b.xml type=XML",
+            ]
+        )
+        self.assertEqual(
+            verifier._manifest_resource_file(
+                manifest, "fullBackupContent", "backup_rules", resources
+            ),
+            "res/a.xml",
+        )
+        self.assertEqual(
+            verifier._manifest_resource_file(
+                manifest, "dataExtractionRules", "data_extraction_rules", resources
+            ),
+            "res/b.xml",
+        )
+
+        missing_path = resources.replace("  () (file) res/a.xml type=XML\n", "")
+        with self.assertRaises(SystemExit):
+            verifier._manifest_resource_file(
+                manifest, "fullBackupContent", "backup_rules", missing_path
+            )
+
     def test_both_workflows_run_configuration_and_packaged_apk_gate(self):
         verifier = (SCRIPTS / "verify_android_backup_policy.py").read_text(
             encoding="utf-8"
