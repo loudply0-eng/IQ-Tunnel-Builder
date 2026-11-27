@@ -107,6 +107,9 @@ jobs:
           test -s lib/main.dart
           test -s tool/patch_libxray_android.py
           test -s packages/iqtunnel_xray/pubspec.yaml
+          # Refuse to build from a private source revision that still regenerates
+          # the local vault key when existing encrypted profile data is read.
+          python3 .github/scripts/verify_vault_fail_closed.py
 
       - name: Free unused runner disk space
         run: |
