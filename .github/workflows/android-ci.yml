@@ -50,6 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest discover -s "$GITHUB_WORKSPACE/test/tool" -p "*_test.py" -v
+          python3 .github/scripts/verify_vault_fail_closed.py
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -1)"
           test -n "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
