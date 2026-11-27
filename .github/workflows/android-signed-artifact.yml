@@ -131,6 +131,9 @@ jobs:
           flutter create --platforms=android --project-name iq_tunnel --org com.iqtunnel /tmp/iq_tunnel_scaffold
           cp -a /tmp/iq_tunnel_scaffold/android ./android
 
+      - name: Configure Android backup policy
+        run: python3 .github/scripts/configure_android_backup_policy.py
+
       - name: Configure Android Gradle compatibility
         run: |
           set -euo pipefail
@@ -312,6 +315,29 @@ jobs:
           UPDATE_PUBLIC_KEY: 4eOsYpXniRBp1ZTJjq5c3HbDW8tCvWbv1fr5PLVl+sk=
         run: flutter build apk --release --dart-define=UPDATE_MANIFEST_URL="$UPDATE_MANIFEST_URL" --dart-define=UPDATE_PUBLIC_KEY="$UPDATE_PUBLIC_KEY"
 
+      - name: Verify packaged Android backup policy with AAPT2
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          AAPT2="$(find "$ANDROID_HOME/build-tools" -type f -name aapt2 | sort -V | tail -1)"
+          test -n "$AAPT2" || { echo "Android Build Tools aapt2 is required for the release backup gate."; exit 1; }
+          python3 .github/scripts/verify_android_backup_policy.py \
+            --apk "$APK" \
+            --aapt2 "$AAPT2" \
+            --evidence-dir build/android-backup-policy-evidence
+
+      - name: Verify Android package identity
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          test -n "$AAPT"
+          BADGING="$("$AAPT" dump badging "$APK")"
+          printf '%s\\n' "$BADGING" | grep -Fq "package: name='com.iqtunnel.iq_tunnel'" || {
+            echo "Signed APK applicationId does not match the established IQ Tunnel package identity."
+            exit 1
+          }
+
       - name: Verify APK signature and prepare artifact
         run: |
           set -euo pipefail
@@ -335,6 +361,14 @@ jobs:
           cp build/third-party/xray-core-v26.11.9-source.tar.gz build/iq-tunnel-signed-release/
           cp build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 build/iq-tunnel-signed-release/
           (cd build/iq-tunnel-signed-release && sha256sum IQ-Tunnel-*.apk xray-core-v26.11.9-source.tar.gz > SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        name: Upload signed APK backup-policy evidence
+        with:
+          name: iq-tunnel-android-backup-policy-evidence
+          path: build/android-backup-policy-evidence/
+          if-no-files-found: error
+          retention-days: 30
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
