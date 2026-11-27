@@ -53,6 +53,13 @@ class AndroidBackupPolicyTests(unittest.TestCase):
             }
             for permission in configure.REMOVED_PERMISSIONS:
                 self.assertEqual(removal_markers.get(permission), "remove")
+            root_children = list(manifest_root)
+            marker_positions = [
+                index for index, node in enumerate(root_children)
+                if node.tag == "uses-permission" and node.get(tools + "node") == "remove"
+            ]
+            self.assertTrue(marker_positions)
+            self.assertLess(max(marker_positions), root_children.index(application))
 
             self.assertEqual(application.get(android + "allowBackup"), "false")
             self.assertEqual(
@@ -111,8 +118,8 @@ class AndroidBackupPolicyTests(unittest.TestCase):
         for permission in verifier.FORBIDDEN_MEDIA_PERMISSIONS:
             with self.subTest(permission=permission):
                 permission_node = (
-                    '  E: uses-permission\\n'
-                    f'    A: http://schemas.android.com/apk/res/android:name(0x01010003)="{permission}"\\n'
+                    '  E: uses-permission\n'
+                    f'    A: http://schemas.android.com/apk/res/android:name(0x01010003)="{permission}"\n'
                 )
                 manifest_with_permission = manifest.replace(
                     "  E: application",

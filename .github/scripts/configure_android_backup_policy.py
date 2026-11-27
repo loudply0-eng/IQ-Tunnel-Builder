@@ -62,14 +62,16 @@ def configure(manifest_path: Path, resource_dir: Path) -> None:
     }
     for permission in REMOVED_PERMISSIONS:
         if permission not in existing_removals:
-            ET.SubElement(
-                root,
+            marker = ET.Element(
                 "uses-permission",
                 {
                     ANDROID + "name": permission,
                     TOOLS + "node": "remove",
                 },
             )
+            # Keep all uses-permission elements before <application>, as required
+            # by the Android manifest structure.
+            root.insert(list(root).index(application), marker)
 
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     tree.write(manifest_path, encoding="utf-8", xml_declaration=True)
