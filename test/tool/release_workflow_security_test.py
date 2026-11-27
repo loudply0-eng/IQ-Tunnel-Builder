@@ -347,6 +347,13 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(workflow.count("raw_current_build < 0"), 2)
         self.assertNotIn('int(current["build_number"])', workflow)
 
+    def test_signed_artifact_manifest_build_number_must_be_a_json_integer(self):
+        workflow = self.read_workflow("android-signed-artifact.yml")
+        self.assertIn('raw_current_build = current["build_number"]', workflow)
+        self.assertIn("type(raw_current_build) is not int", workflow)
+        self.assertIn("raw_current_build < 0", workflow)
+        self.assertNotIn('int(current["build_number"])', workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
