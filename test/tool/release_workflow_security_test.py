@@ -381,6 +381,25 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         vault_gate = release.index("python3 .github/scripts/verify_vault_fail_closed.py")
         self.assertLess(source_copy, vault_gate)
 
+    def test_signed_artifact_workflow_enforces_packaged_backup_policy_and_identity(self):
+        workflow = self.read_workflow("android-signed-artifact.yml")
+        configure = workflow.index(
+            "python3 .github/scripts/configure_android_backup_policy.py"
+        )
+        build = workflow.index("flutter build apk --release")
+        verify = workflow.index(
+            "python3 .github/scripts/verify_android_backup_policy.py"
+        )
+        identity = workflow.index('"$AAPT" dump badging "$APK"')
+        artifact = workflow.index("name: iq-tunnel-android-backup-policy-evidence")
+        signed_apk = workflow.index("name: iq-tunnel-signed-release-apk")
+        self.assertLess(configure, build)
+        self.assertGreater(verify, build)
+        self.assertGreater(identity, verify)
+        self.assertLess(artifact, signed_apk)
+        self.assertIn("package: name='com.iqtunnel.iq_tunnel'", workflow)
+        self.assertIn("retention-days: 30", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
