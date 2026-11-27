@@ -10,6 +10,11 @@ on:
         required: true
         type: boolean
         default: false
+      source_ref:
+        description: Private source ref (main for manual runs, or an exact 40-character commit SHA)
+        required: false
+        type: string
+        default: main
 
 permissions:
   contents: read
@@ -30,6 +35,76 @@ jobs:
         with:
           ref: main
           persist-credentials: false
+
+      - name: Validate private source ref and read-only deploy key
+        shell: bash
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+          SOURCE_DEPLOY_KEY: ${{ secrets.IQT_PROD_SOURCE_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ "$SOURCE_REF" != "main" && ! "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_ref must be main or a full 40-character commit SHA."
+            exit 1
+          fi
+          test -n "$SOURCE_DEPLOY_KEY" || {
+            echo "Missing Environment secret IQT_PROD_SOURCE_DEPLOY_KEY."
+            exit 1
+          }
+
+      - name: Checkout exact private source revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: loudply0-eng/IQ-Tunnel
+          ref: ${{ inputs.source_ref }}
+          ssh-key: ${{ secrets.IQT_PROD_SOURCE_DEPLOY_KEY }}
+          path: .iqt-private-source
+          persist-credentials: false
+
+      - name: Checkout private main history for trust verification
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: loudply0-eng/IQ-Tunnel
+          ref: main
+          ssh-key: ${{ secrets.IQT_PROD_SOURCE_DEPLOY_KEY }}
+          path: .iqt-private-main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify selected source commit belongs to private main history
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="$(git -C .iqt-private-source rev-parse HEAD)"
+          MAIN_SHA="$(git -C .iqt-private-main rev-parse HEAD)"
+          if ! git -C .iqt-private-main cat-file -e "$SOURCE_SHA^{commit}" 2>/dev/null; then
+            echo "Selected source commit is not present in private main history."
+            exit 1
+          fi
+          if ! git -C .iqt-private-main merge-base --is-ancestor "$SOURCE_SHA" "$MAIN_SHA"; then
+            echo "Selected source commit is not an ancestor of private main."
+            exit 1
+          fi
+          echo "Verified private source commit $SOURCE_SHA is reachable from main at $MAIN_SHA"
+
+      - name: Populate build workspace from verified private source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="$(git -C .iqt-private-source rev-parse HEAD)"
+          rsync -a --delete \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='.iqt-private-source/' \
+            --exclude='.iqt-private-main/' \
+            .iqt-private-source/ ./
+          rm -rf .iqt-private-source .iqt-private-main
+          echo "Using verified private IQ Tunnel source commit: $SOURCE_SHA"
+          test -s pubspec.yaml
+          test -s lib/main.dart
+          test -s tool/patch_libxray_android.py
+          test -s packages/iqtunnel_xray/pubspec.yaml
+          python3 .github/scripts/verify_vault_fail_closed.py
 
       - name: Verify encrypted vault fail-closed source
         run: python3 .github/scripts/verify_vault_fail_closed.py
