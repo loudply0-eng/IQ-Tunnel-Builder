@@ -290,11 +290,19 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn("rename /.", deploy_step)
         self.assertIn('PUBLISH_DIR="/publish"', deploy_step)
         self.assertIn("put build/app/outputs/flutter-apk/app-release.apk $PUBLISH_DIR/.iqt-", deploy_step)
-        self.assertIn("rename $PUBLISH_DIR/.manifest-", deploy_step)
-        self.assertLess(
-            deploy_step.index("rename $PUBLISH_DIR/.manifest-"),
-            deploy_step.index('PUBLIC_BASE="https://'),
+        manifest_publish = deploy_step.index("rename $PUBLISH_DIR/.manifest-")
+        apk_hash_check = deploy_step.index(
+            'test "$ACTUAL_APK_SHA256" = "$EXPECTED_APK_SHA256"'
         )
+        xray_head_check = deploy_step.index(
+            '--head "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz.sha256"'
+        )
+        manifest_compare = deploy_step.index(
+            "cmp --silent /tmp/iq-update-manifest.json /tmp/iq-update-manifest-published.json"
+        )
+        self.assertLess(apk_hash_check, manifest_publish)
+        self.assertLess(xray_head_check, manifest_publish)
+        self.assertLess(manifest_publish, manifest_compare)
 
 
     def test_release_documentation_matches_sftp_deploy_credentials(self):
