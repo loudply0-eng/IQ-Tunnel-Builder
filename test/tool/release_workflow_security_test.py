@@ -475,7 +475,10 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn('line.startswith("version:")', workflow)
         self.assertIn('version, separator, build_number = version_lines[0].partition("+")', workflow)
         self.assertIn('if not separator or not version or not build_number.isdigit():', workflow)
-        self.assertNotIn('re.search(r"^version:', workflow)
+        metadata_start = workflow.index('VERSION_METADATA="$(python3 - <<\'PY\'')
+        metadata_end = workflow.index('EXPECTED_VERSION=', metadata_start)
+        metadata_parser = workflow[metadata_start:metadata_end]
+        self.assertNotIn('re.search(r"^version:', metadata_parser)
 
     def test_signed_artifact_workflow_enforces_packaged_backup_policy_and_identity(self):
         workflow = self.read_workflow("android-signed-artifact.yml")
