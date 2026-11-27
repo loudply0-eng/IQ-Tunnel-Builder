@@ -310,7 +310,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("/incoming", automatic)
         self.assertIn("root-owned", automatic)
         self.assertIn("/incoming/publish", automatic)
-        self.assertIn("not directly to `/`", automatic)
+        self.assertIn("never directly to `/`", automatic)
 
     def test_automatic_release_documentation_matches_disabled_dispatcher(self):
         automatic = (ROOT / "docs" / "AUTOMATIC_RELEASES.md").read_text(
