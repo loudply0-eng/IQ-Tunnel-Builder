@@ -470,6 +470,13 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("Release APK is marked android:debuggable=true", verifier)
 
 
+    def test_signed_artifact_version_identity_parses_pubspec_build_number(self):
+        workflow = self.read_workflow("android-signed-artifact.yml")
+        self.assertIn('line.startswith("version:")', workflow)
+        self.assertIn('version, separator, build_number = version_lines[0].partition("+")', workflow)
+        self.assertIn('if not separator or not version or not build_number.isdigit():', workflow)
+        self.assertNotIn('re.search(r"^version:', workflow)
+
     def test_signed_artifact_workflow_enforces_packaged_backup_policy_and_identity(self):
         workflow = self.read_workflow("android-signed-artifact.yml")
         configure = workflow.index(
