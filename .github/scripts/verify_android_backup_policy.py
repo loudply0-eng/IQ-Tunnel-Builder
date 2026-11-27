@@ -149,8 +149,8 @@ def _manifest_resource_file(
     attribute_lines = [
         line for line in manifest_dump.splitlines()
         if re.search(
-            rf"(?:android:|http://schemas\\.android\\.com/apk/res/android:)"
-            rf"{re.escape(attribute)}\\(",
+            rf"(?:android:|http://schemas\.android\.com/apk/res/android:)"
+            rf"{re.escape(attribute)}\(",
             line,
         )
     ]
@@ -167,45 +167,43 @@ def _manifest_resource_file(
             f"Could not resolve the compiled resource ID for android:{attribute}."
         )
 
+    lines = resources_dump.splitlines()
     headers = []
-    for item in resources_dump.splitlines():
+    for line_number, item in enumerate(lines):
         match = re.match(
-            r"^\\s*resource\\s+(0x[0-9a-fA-F]+)\\s+(.+?)\\s*$",
+            r"^\s*resource\s+(0x[0-9a-fA-F]+)\s+(.+?)\s*$",
             item,
         )
         if match:
-            headers.append((match.group(1).lower(), match.group(2), item))
+            headers.append(
+                (match.group(1).lower(), match.group(2), line_number, item)
+            )
 
     expected_type_name = f"xml/{resource_name}".lower()
     if resource_id_match:
         resource_id = resource_id_match.group(1).lower()
         candidates = [
-            index for index, (rid, name, _) in enumerate(headers)
-            if rid == resource_id and name.lower().endswith(expected_type_name)
+            entry for entry in headers
+            if entry[0] == resource_id and entry[1].lower().endswith(expected_type_name)
         ]
     else:
         candidates = [
-            index for index, (_, name, _) in enumerate(headers)
-            if name.lower().endswith(expected_type_name)
+            entry for entry in headers
+            if entry[1].lower().endswith(expected_type_name)
         ]
 
     if len(candidates) != 1:
         raise SystemExit(
             f"android:{attribute} does not resolve uniquely to xml/{resource_name}; "
-            f"matching resource-table entries: "
-            f"{[headers[index][2] for index in candidates[:5]]!r}"
+            f"matching resource-table entries: {[entry[3] for entry in candidates[:5]]!r}"
         )
 
-    start = candidates[0]
-    end = candidates[1] if len(candidates) > 1 else len(headers)
-    next_header_line = headers[start][2]
-    start_line = resources_dump.splitlines().index(next_header_line)
-    end_line = (
-        resources_dump.splitlines().index(headers[end][2])
-        if end < len(headers) else len(resources_dump.splitlines())
-    )
-    resource_block = "\\n".join(resources_dump.splitlines()[start_line:end_line])
-    paths = re.findall(r"\\(file\\)\\s+(res/[^\\s]+)", resource_block)
+    selected = candidates[0]
+    start_line = selected[2]
+    later_headers = [entry for entry in headers if entry[2] > start_line]
+    end_line = later_headers[0][2] if later_headers else len(lines)
+    resource_block = "\n".join(lines[start_line:end_line])
+    paths = re.findall(r"\(file\)\s+(res/[^\s]+)", resource_block)
 
     if len(paths) != 1:
         raise SystemExit(
@@ -213,6 +211,7 @@ def _manifest_resource_file(
             f"AAPT2 resource-table block was: {resource_block[:1200]!r}"
         )
     return paths[0]
+
 
 
 def _aapt2_xmltree(aapt2: str, apk: Path, internal_path: str, label: str) -> str:
@@ -330,7 +329,7 @@ def verify(
     )
     (evidence_dir / "verification.txt").write_text(
         "PASS: packaged manifest excludes all nine storage domains from backup/transfer "
-        "and omits unused broad media/storage read permissions.\\n",
+        "and omits unused broad media/storage read permissions.\n",
         encoding="utf-8",
     )
     print(
