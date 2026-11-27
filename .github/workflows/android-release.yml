@@ -310,10 +310,26 @@ jobs:
           p.write_text(s)
           PY
           chmod 600 android/key.properties android/app/upload-keystore.jks
-          test "$ANDROID_KEY_ALIAS" = "iq-tunnel" || { echo "Unexpected Android signing alias"; exit 1; }
-          KEY_CERT_SHA256="$(keytool -list -v -keystore android/app/upload-keystore.jks -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" | awk -F': ' '/SHA256:/{gsub(":", "", $2); print tolower($2); exit}')"
+          # The alias is a keystore-local label, not the signing-key identity.
+          # Accept the configured non-empty alias only after keytool proves that
+          # it resolves to a private-key entry with the permanently pinned cert.
+          if ! KEYTOOL_OUTPUT="$(LC_ALL=C keytool -list -v -keystore android/app/upload-keystore.jks -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" 2>&1)"; then
+            echo "Could not open the configured Android keystore entry. Check the keystore password and IQT_PROD_ANDROID_KEY_ALIAS Environment secret."
+            printf '%s\n' "$KEYTOOL_OUTPUT"
+            exit 1
+          fi
+          ENTRY_TYPE="$(printf '%s\n' "$KEYTOOL_OUTPUT" | awk -F': ' '/^Entry type:/{print $2; exit}')"
+          test "$ENTRY_TYPE" = "PrivateKeyEntry" || {
+            echo "Configured Android keystore alias does not identify a private-key entry."
+            exit 1
+          }
+          KEY_CERT_SHA256="$(printf '%s\n' "$KEYTOOL_OUTPUT" | awk -F': ' '/SHA256:/{gsub(":", "", $2); print tolower($2); exit}')"
           EXPECTED_KEY_CERT_SHA256='cc96499ac23bf3a9101b2a7cc7d19feef852e61a5902860abe15218a8968b017'
-          test "$KEY_CERT_SHA256" = "$EXPECTED_KEY_CERT_SHA256" || { echo "Configured Android keystore certificate does not match the approved IQ Tunnel release key"; exit 1; }
+          test "$KEY_CERT_SHA256" = "$EXPECTED_KEY_CERT_SHA256" || {
+            echo "Configured Android keystore certificate does not match the approved IQ Tunnel release key."
+            echo "The configured alias was readable, but its certificate fingerprint is not the pinned release certificate."
+            exit 1
+          }
 
       - name: Verify update signing key matches app public key
         env:
