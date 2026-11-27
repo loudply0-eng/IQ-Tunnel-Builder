@@ -688,8 +688,6 @@ jobs:
           rename $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.xray.tmp $PUBLISH_DIR/xray-core-v26.11.9-source.tar.gz
           put build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.sha256.tmp
           rename $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.sha256.tmp $PUBLISH_DIR/xray-core-v26.11.9-source.tar.gz.sha256
-          put /tmp/iq-update-manifest.json $PUBLISH_DIR/.manifest-$GITHUB_RUN_ID.tmp
-          rename $PUBLISH_DIR/.manifest-$GITHUB_RUN_ID.tmp $PUBLISH_DIR/manifest.json
           SFTP_BATCH
 
           PUBLIC_BASE="https://mahmoudaljuorany.store/updates/iq-tunnel"
@@ -725,6 +723,19 @@ jobs:
           }
           curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz" >/dev/null
           curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz.sha256" >/dev/null
+          # Keep the old manifest live until the new APK is publicly served
+          # with the expected positive Content-Length and matching SHA-256.
+          # Publishing the signed manifest is the final activation step.
+          sftp -b - \
+            -i ~/.ssh/id_ed25519 \
+            -oBatchMode=yes \
+            -oStrictHostKeyChecking=yes \
+            -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -oIdentitiesOnly=yes \
+            "$ORACLE_USER@$ORACLE_HOST" <<SFTP_MANIFEST
+          put /tmp/iq-update-manifest.json $PUBLISH_DIR/.manifest-$GITHUB_RUN_ID.tmp
+          rename $PUBLISH_DIR/.manifest-$GITHUB_RUN_ID.tmp $PUBLISH_DIR/manifest.json
+          SFTP_MANIFEST
           curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' "$PUBLIC_BASE/manifest.json" -o /tmp/iq-update-manifest-published.json
           cmp --silent /tmp/iq-update-manifest.json /tmp/iq-update-manifest-published.json
 
