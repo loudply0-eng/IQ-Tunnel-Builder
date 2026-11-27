@@ -6,6 +6,14 @@ In `loudply0-eng/IQ-Tunnel-Builder`, open **Settings → Environments → iq-tun
 
 Keep deployment branches restricted to `main`. Production secrets used by the manually confirmed release workflow belong only in this Environment. Configure at least one trusted required reviewer before any production run is approved. Keep the environment restricted to `main`.
 
+Add the dedicated read-only private-source deploy key as an Environment secret:
+
+| Name | Value and scope |
+|---|---|
+| `IQT_PROD_SOURCE_DEPLOY_KEY` | SSH private key for read-only checkout of `loudply0-eng/IQ-Tunnel`. Register its public half as a read-only deploy key on the private repository. It must not have write access. |
+
+The same Environment secret is required by both signed Builder workflows because both now build from a commit verified against private `main`. Never paste the key into repository files, workflow inputs, PR comments, or logs.
+
 **Current state:** Manual release is available only through the Builder's signed-release workflow with `confirm_release=true` and the Environment approval gate. Automatic private-source dispatch is currently hard-disabled; do not enable unattended publishing.
 
 ## 2. Private source dispatcher (held / not active)
