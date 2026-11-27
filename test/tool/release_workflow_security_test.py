@@ -222,9 +222,11 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
     def test_sftp_deploy_uses_the_supported_openssh_rename_batch_command(self):
         workflow = self.read_workflow("android-release.yml")
-        self.assertEqual(workflow.count("          rename /"), 4)
+        self.assertEqual(workflow.count("          rename $PUBLISH_DIR/"), 4)
         self.assertNotIn("          posix-rename ", workflow)
         self.assertNotIn("rename /incoming/", workflow)
+        self.assertNotIn("rename /.", workflow)
+        self.assertIn('PUBLISH_DIR="/publish"', workflow)
         self.assertIn("Remote working directory: /", workflow)
         self.assertIn("rename $PROBE_SOURCE $PROBE_TARGET", workflow)
         self.assertIn("Sending SSH2_FXP_EXTENDED(posix-rename@openssh.com)", workflow)
@@ -245,6 +247,8 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         )
         self.assertLess(preflight, probe_rename)
         self.assertLess(probe_rename, first_release_upload)
+        self.assertIn('PUBLISH_DIR="/publish"', deploy_step)
+        self.assertIn("ls -ld $PUBLISH_DIR", deploy_step)
         self.assertIn("put /tmp/iqt-sftp-rename-probe-source $PROBE_SOURCE", deploy_step)
         self.assertIn("put /tmp/iqt-sftp-rename-probe-target $PROBE_TARGET", deploy_step)
         self.assertIn("Sending SSH2_FXP_EXTENDED(posix-rename@openssh.com)", deploy_step)
@@ -272,13 +276,15 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn("scp ", deploy_step)
         self.assertNotIn("ssh ", deploy_step)
         self.assertNotIn("ORACLE_DEPLOY_DIR", deploy_step)
-        self.assertEqual(deploy_step.count("          rename /"), 4)
+        self.assertEqual(deploy_step.count("          rename $PUBLISH_DIR/"), 4)
         self.assertNotIn("          posix-rename ", deploy_step)
         self.assertNotIn("rename /incoming/", deploy_step)
-        self.assertIn("put build/app/outputs/flutter-apk/app-release.apk /.iqt-", deploy_step)
-        self.assertIn("rename /.manifest-", deploy_step)
+        self.assertNotIn("rename /.", deploy_step)
+        self.assertIn('PUBLISH_DIR="/publish"', deploy_step)
+        self.assertIn("put build/app/outputs/flutter-apk/app-release.apk $PUBLISH_DIR/.iqt-", deploy_step)
+        self.assertIn("rename $PUBLISH_DIR/.manifest-", deploy_step)
         self.assertLess(
-            deploy_step.index("rename /.manifest-"),
+            deploy_step.index("rename $PUBLISH_DIR/.manifest-"),
             deploy_step.index('PUBLIC_BASE="https://'),
         )
 
@@ -302,6 +308,9 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("/incoming", security)
         self.assertIn("iqt-deploy", automatic)
         self.assertIn("/incoming", automatic)
+        self.assertIn("root-owned", automatic)
+        self.assertIn("/incoming/publish", automatic)
+        self.assertIn("not directly to `/`", automatic)
 
 
     def test_release_checks_package_identity_and_permanent_android_signer(self):
