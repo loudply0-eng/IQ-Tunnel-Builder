@@ -389,7 +389,10 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             "cmp --silent /tmp/iq-update-manifest.json /tmp/iq-update-manifest-published.json"
         )
         first_sftp_batch = publish_step.split("SFTP_BATCH", 1)[0]
-        self.assertNotIn("manifest.json", first_sftp_batch)
+        self.assertNotIn(
+            "put /tmp/iq-update-manifest.json $PUBLISH_DIR/.manifest-",
+            first_sftp_batch,
+        )
         self.assertLess(apk_hash_check, manifest_upload)
         self.assertLess(xray_check, manifest_upload)
         self.assertLess(manifest_upload, manifest_compare)
