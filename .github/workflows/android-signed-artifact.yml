@@ -288,7 +288,11 @@ jobs:
               if not isinstance(current, dict):
                   raise SystemExit("Published update manifest has an invalid JSON shape.")
               try:
-                  current_build = int(current["build_number"])
+                  raw_current_build = current["build_number"]
+                  # bool is a subclass of int; accept only a real JSON integer.
+                  if type(raw_current_build) is not int or raw_current_build < 0:
+                      raise ValueError("build_number must be a non-negative JSON integer")
+                  current_build = raw_current_build
               except (KeyError, TypeError, ValueError) as error:
                   raise SystemExit("Published update manifest has an invalid build_number.") from error
               if new_build <= current_build:
