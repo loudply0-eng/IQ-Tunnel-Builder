@@ -312,6 +312,19 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("/incoming/publish", automatic)
         self.assertIn("not directly to `/`", automatic)
 
+    def test_automatic_release_documentation_matches_disabled_dispatcher(self):
+        automatic = (ROOT / "docs" / "AUTOMATIC_RELEASES.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("hard-disabled", automatic)
+        self.assertIn("${{ false }}", automatic)
+        self.assertIn("does not listen to `push` events", automatic)
+        self.assertIn(
+            "do not create `IQT_BUILDER_DISPATCH_TOKEN`",
+            automatic,
+        )
+        self.assertIn("Manual release is available only", automatic)
+
 
     def test_release_checks_package_identity_and_permanent_android_signer(self):
         workflow = self.read_workflow("android-release.yml")
