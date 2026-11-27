@@ -192,6 +192,7 @@ void main() {
       throwsA(isA<UpdateUnavailableException>()),
     );
     expect(client.bodyCancelled, isTrue);
+    await Future<void>.delayed(Duration.zero);
     expect(client.aborted, isTrue);
   });
 
