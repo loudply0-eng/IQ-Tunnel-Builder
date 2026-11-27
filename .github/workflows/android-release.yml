@@ -626,8 +626,9 @@ jobs:
             -oIdentitiesOnly=yes \
             "$ORACLE_USER@$ORACLE_HOST" > /tmp/iqt-sftp-capabilities.log 2>&1 <<SFTP_PROBE
           pwd
-          ls -ld /
-          ls -ld $PUBLISH_DIR
+          ls -l /
+          cd $PUBLISH_DIR
+          pwd
           put /tmp/iqt-sftp-rename-probe-source $PROBE_SOURCE
           put /tmp/iqt-sftp-rename-probe-target $PROBE_TARGET
           rename $PROBE_SOURCE $PROBE_TARGET
@@ -635,6 +636,10 @@ jobs:
           SFTP_PROBE
           grep -Fq 'Remote working directory: /' /tmp/iqt-sftp-capabilities.log || {
             echo "SFTP account did not start at its jailed root; refusing to publish."
+            exit 1
+          }
+          grep -Fq 'Remote working directory: /publish' /tmp/iqt-sftp-capabilities.log || {
+            echo "SFTP publish directory /publish is missing or not accessible; refusing to publish."
             exit 1
           }
           grep -Fq 'Sending SSH2_FXP_EXTENDED(posix-rename@openssh.com)' /tmp/iqt-sftp-capabilities.log || {
