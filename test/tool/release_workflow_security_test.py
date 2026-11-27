@@ -363,6 +363,24 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("raw_current_build < 0", workflow)
         self.assertNotIn('int(current["build_number"])', workflow)
 
+    def test_all_build_paths_enforce_fail_closed_vault_source(self):
+        gate = ROOT / ".github" / "scripts" / "verify_vault_fail_closed.py"
+        gate_text = gate.read_text(encoding="utf-8")
+        self.assertIn("createIfMissing: true", gate_text)
+        self.assertIn("createIfMissing: false", gate_text)
+        self.assertIn("REQUIRED_PROFILE_STORE_TEST_MARKERS", gate_text)
+
+        ci = self.read_workflow("android-ci.yml")
+        release = self.read_workflow("android-release.yml")
+        signed = self.read_workflow("android-signed-artifact.yml")
+        self.assertIn("python3 .github/scripts/verify_vault_fail_closed.py", ci)
+        self.assertIn("python3 .github/scripts/verify_vault_fail_closed.py", release)
+        self.assertIn("python3 .github/scripts/verify_vault_fail_closed.py", signed)
+
+        source_copy = release.index("rsync -a --delete")
+        vault_gate = release.index("python3 .github/scripts/verify_vault_fail_closed.py")
+        self.assertLess(source_copy, vault_gate)
+
 
 if __name__ == "__main__":
     unittest.main()
