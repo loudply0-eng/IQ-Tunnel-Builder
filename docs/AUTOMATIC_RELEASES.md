@@ -6,7 +6,7 @@ In `loudply0-eng/IQ-Tunnel-Builder`, open **Settings → Environments → iq-tun
 
 Keep deployment branches restricted to `main`. Production secrets used by the manually confirmed release workflow belong only in this Environment. Configure at least one trusted required reviewer before any production run is approved. Keep the environment restricted to `main`.
 
-**Current state:** manual release is available only through the Builder's signed-release workflow with `confirm_release=true` and the Environment approval gate. Automatic private-source dispatch is currently hard-disabled; do not enable unattended publishing.
+**Current state:** Manual release is available only through the Builder's signed-release workflow with `confirm_release=true` and the Environment approval gate. Automatic private-source dispatch is currently hard-disabled; do not enable unattended publishing.
 
 ## 2. Private source dispatcher (held / not active)
 
