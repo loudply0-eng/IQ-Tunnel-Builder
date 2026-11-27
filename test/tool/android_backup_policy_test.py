@@ -120,7 +120,7 @@ class AndroidBackupPolicyTests(unittest.TestCase):
         )
         debug_manifest = manifest.replace(
             "  E: application",
-            "  E: application\\n"
+            "  E: application\n"
             "    A: http://schemas.android.com/apk/res/android:debuggable(0x0101000f)=true",
             1,
         )

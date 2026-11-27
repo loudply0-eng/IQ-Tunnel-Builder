@@ -474,7 +474,12 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         workflow = self.read_workflow("android-signed-artifact.yml")
         self.assertIn('line.startswith("version:")', workflow)
         self.assertIn('version, separator, build_number = version_lines[0].partition("+")', workflow)
-        self.assertIn('if not separator or not version or not build_number.isdigit():', workflow)
+        metadata_start = workflow.index('VERSION_METADATA="$(python3 - <<\\'PY\\'')
+        metadata_end = workflow.index('EXPECTED_VERSION=', metadata_start)
+        metadata_parser = workflow[metadata_start:metadata_end]
+        self.assertIn("if (", metadata_parser)
+        self.assertIn("or not build_number.isdigit()", metadata_parser)
+        self.assertNotIn('re.search(r"^version:', metadata_parser)
         metadata_start = workflow.index('VERSION_METADATA="$(python3 - <<\'PY\'')
         metadata_end = workflow.index('EXPECTED_VERSION=', metadata_start)
         metadata_parser = workflow[metadata_start:metadata_end]
