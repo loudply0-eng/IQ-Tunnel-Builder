@@ -267,6 +267,13 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             deploy_step,
         )
         self.assertIn("trap cleanup_sftp_probe EXIT", deploy_step)
+        for temporary_name in (
+            ".iqt-$GITHUB_RUN_ID.apk.tmp",
+            ".iqt-$GITHUB_RUN_ID.xray.tmp",
+            ".iqt-$GITHUB_RUN_ID.sha256.tmp",
+            ".manifest-$GITHUB_RUN_ID.tmp",
+        ):
+            self.assertIn(f"-rm $PUBLISH_DIR/{temporary_name}", deploy_step)
         self.assertIn("refusing to publish", deploy_step)
         self.assertIn("> /tmp/iqt-sftp-capabilities.log 2>&1", deploy_step)
         self.assertIn("Remote working directory: /", deploy_step)
@@ -428,6 +435,10 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("python3 .github/scripts/verify_vault_fail_closed.py", ci)
         self.assertIn("python3 .github/scripts/verify_vault_fail_closed.py", release)
         self.assertIn("python3 .github/scripts/verify_vault_fail_closed.py", signed)
+        self.assertEqual(
+            signed.count("python3 .github/scripts/verify_vault_fail_closed.py"),
+            1,
+        )
 
         source_copy = release.index("rsync -a --delete")
         vault_gate = release.index("python3 .github/scripts/verify_vault_fail_closed.py")

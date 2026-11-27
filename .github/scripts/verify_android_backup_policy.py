@@ -16,6 +16,13 @@ DOMAINS = (
     "device_database",
     "device_sharedpref",
 )
+FORBIDDEN_MEDIA_PERMISSIONS = frozenset({
+    "android.permission.READ_EXTERNAL_STORAGE",
+    "android.permission.READ_MEDIA_IMAGES",
+    "android.permission.READ_MEDIA_VIDEO",
+    "android.permission.READ_MEDIA_AUDIO",
+    "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+})
 
 
 def _parse_xmltree(dump: str) -> list[dict]:
@@ -79,6 +86,17 @@ def _assert_exclusions(parent: dict, expected_domains: tuple[str, ...], context:
         raise SystemExit(f"{context} must use path='.' for every exclusion.")
 
 
+def _assert_no_forbidden_media_permissions(manifest_root: dict) -> None:
+    for element in manifest_root["children"]:
+        if element["name"] not in {"uses-permission", "uses-permission-sdk-23"}:
+            continue
+        permission = _android_attribute(element["attributes"], "name")
+        if permission in FORBIDDEN_MEDIA_PERMISSIONS:
+            raise SystemExit(
+                f"Packaged manifest requests unnecessary media/storage permission: {permission}"
+            )
+
+
 def _manifest_resource_id(dump: str, attribute: str, resource_name: str, resources: str) -> None:
     lines = [
         line for line in dump.splitlines()
@@ -119,6 +137,7 @@ def validate_dumps(manifest: str, legacy: str, extraction: str, resources: str) 
     manifest_roots = _parse_xmltree(manifest)
     if len(manifest_roots) != 1 or manifest_roots[0]["name"] != "manifest":
         raise SystemExit("Packaged Android manifest could not be parsed.")
+    _assert_no_forbidden_media_permissions(manifest_roots[0])
     application = _direct_child(manifest_roots[0], "application")
     if _android_attribute(application["attributes"], "allowBackup") != "false":
         raise SystemExit("Packaged manifest does not enforce android:allowBackup=false.")
@@ -174,11 +193,11 @@ def verify(apk: Path, aapt2: str, evidence_dir: Path) -> None:
         resources_result.stdout,
     )
     (evidence_dir / "verification.txt").write_text(
-        "PASS: packaged manifest, legacy backup rules, cloud backup, and device transfer "
-        "exclude all nine storage domains.\n",
+        "PASS: packaged manifest excludes all nine storage domains from backup/transfer "
+        "and omits unused broad media/storage read permissions.\n",
         encoding="utf-8",
     )
-    print("AAPT2 verified the packaged Android backup policy.")
+    print("AAPT2 verified the packaged Android backup and media-permission policy.")
 
 
 def main() -> None:

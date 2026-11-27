@@ -106,9 +106,6 @@ jobs:
           test -s packages/iqtunnel_xray/pubspec.yaml
           python3 .github/scripts/verify_vault_fail_closed.py
 
-      - name: Verify encrypted vault fail-closed source
-        run: python3 .github/scripts/verify_vault_fail_closed.py
-
       - name: Free unused runner disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/system-images /opt/hostedtoolcache/CodeQL /usr/local/share/powershell /opt/ghc

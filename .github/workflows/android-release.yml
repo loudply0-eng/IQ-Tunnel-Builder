@@ -613,6 +613,10 @@ jobs:
               "$ORACLE_USER@$ORACLE_HOST" >/dev/null 2>&1 <<SFTP_CLEANUP || true
           -rm $PROBE_SOURCE
           -rm $PROBE_TARGET
+          -rm $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.apk.tmp
+          -rm $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.xray.tmp
+          -rm $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.sha256.tmp
+          -rm $PUBLISH_DIR/.manifest-$GITHUB_RUN_ID.tmp
           SFTP_CLEANUP
             rm -f /tmp/iqt-sftp-rename-probe-source /tmp/iqt-sftp-rename-probe-target
           }

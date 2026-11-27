@@ -44,7 +44,16 @@ class AndroidBackupPolicyTests(unittest.TestCase):
             configure.configure(manifest, resources)
 
             android = "{http://schemas.android.com/apk/res/android}"
-            application = ET.parse(manifest).getroot().find("application")
+            manifest_root = ET.parse(manifest).getroot()
+            application = manifest_root.find("application")
+            tools = "{http://schemas.android.com/tools}"
+            removal_markers = {
+                node.get(android + "name"): node.get(tools + "node")
+                for node in manifest_root.findall("uses-permission")
+            }
+            for permission in configure.REMOVED_PERMISSIONS:
+                self.assertEqual(removal_markers.get(permission), "remove")
+
             self.assertEqual(application.get(android + "allowBackup"), "false")
             self.assertEqual(
                 application.get(android + "fullBackupContent"), "@xml/backup_rules"
@@ -99,6 +108,24 @@ class AndroidBackupPolicyTests(unittest.TestCase):
             "resource 0x7f120001 com.iqtunnel:xml/data_extraction_rules\n"
         )
         verifier.validate_dumps(manifest, legacy, extraction, resources)
+        for permission in verifier.FORBIDDEN_MEDIA_PERMISSIONS:
+            with self.subTest(permission=permission):
+                permission_node = (
+                    '  E: uses-permission\\n'
+                    f'    A: http://schemas.android.com/apk/res/android:name(0x01010003)="{permission}"\\n'
+                )
+                manifest_with_permission = manifest.replace(
+                    "  E: application",
+                    permission_node + "  E: application",
+                    1,
+                )
+                with self.assertRaises(SystemExit):
+                    verifier.validate_dumps(
+                        manifest_with_permission,
+                        legacy,
+                        extraction,
+                        resources,
+                    )
         misplaced = (
             "E: data-extraction-rules\n"
             "  E: cloud-backup\n"
@@ -122,7 +149,11 @@ class AndroidBackupPolicyTests(unittest.TestCase):
         )
         self.assertIn('"dump", "xmltree"', verifier)
         self.assertIn('"dump", "resources"', verifier)
-        for workflow_name in ("android-ci.yml", "android-release.yml"):
+        for workflow_name in (
+            "android-ci.yml",
+            "android-release.yml",
+            "android-signed-artifact.yml",
+        ):
             workflow = (ROOT / ".github" / "workflows" / workflow_name).read_text(
                 encoding="utf-8"
             )
