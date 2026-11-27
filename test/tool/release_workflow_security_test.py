@@ -24,6 +24,7 @@ SIGNED_ARTIFACT_SECRET_NAMES = {
     "IQT_PROD_ANDROID_KEYSTORE_PASSWORD",
     "IQT_PROD_ANDROID_KEY_ALIAS",
     "IQT_PROD_ANDROID_KEY_PASSWORD",
+    "IQT_PROD_SOURCE_DEPLOY_KEY",
 }
 
 SECRET_PATTERNS = (
@@ -135,6 +136,13 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assert_read_only_permissions_and_pinned_actions(workflow)
         self.assert_environment_secrets_only(workflow, SIGNED_ARTIFACT_SECRET_NAMES)
         self.assertIn("cancel-in-progress: false", workflow)
+        self.assertIn("source_ref:", workflow)
+        self.assertIn("repository: loudply0-eng/IQ-Tunnel", workflow)
+        self.assertIn("path: .iqt-private-source", workflow)
+        self.assertIn("fetch-depth: 0", workflow)
+        self.assertIn("merge-base --is-ancestor", workflow)
+        self.assertIn("rsync -a --delete", workflow)
+        self.assertIn("IQT_PROD_SOURCE_DEPLOY_KEY", workflow)
 
     def test_routine_ci_never_receives_production_secrets(self):
         workflow = self.read_workflow("android-ci.yml")
