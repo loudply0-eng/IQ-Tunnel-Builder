@@ -320,13 +320,32 @@ void main() {
     );
   });
 
-  test('rejects malformed Ed25519 key or signature lengths', () async {
+  test('rejects malformed Ed25519 key and signature lengths', () async {
     final signed = await _makeSignedUpdate();
-    final service = UpdateService(publicKeyBase64: base64Encode(<int>[1, 2, 3]));
-    addTearDown(service.dispose);
+    final invalidKeyService = UpdateService(
+      publicKeyBase64: base64Encode(<int>[1, 2, 3]),
+    );
+    final invalidSignatureService = UpdateService(
+      publicKeyBase64: signed.publicKeyBase64,
+    );
+    addTearDown(invalidKeyService.dispose);
+    addTearDown(invalidSignatureService.dispose);
+
+    final malformedSignature = UpdateInfo(
+      version: signed.update.version,
+      buildNumber: signed.update.buildNumber,
+      downloadUrl: signed.update.downloadUrl,
+      sha256: signed.update.sha256,
+      notes: signed.update.notes,
+      signature: base64Encode(<int>[1, 2, 3]),
+    );
 
     await expectLater(
-      service.verifyManifestForTesting(signed.update),
+      invalidKeyService.verifyManifestForTesting(signed.update),
+      throwsA(isA<FormatException>()),
+    );
+    await expectLater(
+      invalidSignatureService.verifyManifestForTesting(malformedSignature),
       throwsA(isA<FormatException>()),
     );
   });
