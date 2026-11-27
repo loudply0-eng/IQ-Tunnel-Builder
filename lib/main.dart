@@ -149,14 +149,22 @@ class UpdateInfo {
   final String notes;
   final String signature;
 
-  factory UpdateInfo.fromJson(Map<String, dynamic> json) => UpdateInfo(
-        version: json['version'] as String,
-        buildNumber: (json['build_number'] as num).toInt(),
-        downloadUrl: json['download_url'] as String,
-        sha256: (json['sha256'] as String).toLowerCase(),
-        notes: json['notes'] as String? ?? '',
-        signature: json['signature'] as String,
+  factory UpdateInfo.fromJson(Map<String, dynamic> json) {
+    final rawBuildNumber = json['build_number'];
+    if (rawBuildNumber is! int || rawBuildNumber < 0) {
+      throw const FormatException(
+        'رقم بناء التحديث يجب أن يكون عدداً صحيحاً غير سالب.',
       );
+    }
+    return UpdateInfo(
+      version: json['version'] as String,
+      buildNumber: rawBuildNumber,
+      downloadUrl: json['download_url'] as String,
+      sha256: (json['sha256'] as String).toLowerCase(),
+      notes: json['notes'] as String? ?? '',
+      signature: json['signature'] as String,
+    );
+  }
 
   String get signedPayload => jsonEncode(<String, dynamic>{
         'version': version,
@@ -169,17 +177,69 @@ class UpdateInfo {
 
 
 
+class _UpdateHttpResponse {
+  _UpdateHttpResponse(
+    this.response,
+    this._abortTrigger,
+    Duration bodyTimeout,
+  ) : stream = response.stream.timeout(
+          bodyTimeout,
+          onTimeout: (sink) {
+            sink.addError(
+              TimeoutException('Update response body timed out.'),
+            );
+            if (!_abortTrigger.isCompleted) _abortTrigger.complete();
+          },
+        );
+
+  final http.StreamedResponse response;
+  final Completer<void> _abortTrigger;
+  final Stream<List<int>> stream;
+
+  int get statusCode => response.statusCode;
+  int? get contentLength => response.contentLength;
+
+  void abort() {
+    if (!_abortTrigger.isCompleted) _abortTrigger.complete();
+  }
+
+  Future<void> cancelBody() async {
+    // Subscribe before aborting, so the underlying HTTP response stream is
+    // explicitly cancelled rather than aborting an unopened body.
+    final subscription = stream.listen((_) {});
+    try {
+      await subscription.cancel();
+    } finally {
+      abort();
+    }
+  }
+}
+
 class UpdateService {
-  UpdateService({http.Client? client})
-      : _client = client ?? http.Client(),
-        _ownsClient = client == null;
+  UpdateService({
+    http.Client? client,
+    Duration requestTimeout = const Duration(seconds: 20),
+    Duration downloadTimeout = const Duration(seconds: 30),
+    String? publicKeyBase64,
+    Future<Directory> Function()? temporaryDirectoryProvider,
+  })  : _client = client ?? http.Client(),
+        _ownsClient = client == null,
+        _requestTimeout = requestTimeout,
+        _downloadTimeout = downloadTimeout,
+        _publicKeyBase64 = publicKeyBase64 ?? updatePublicKeyBase64,
+        _temporaryDirectoryProvider = temporaryDirectoryProvider ?? getTemporaryDirectory;
 
   static const int _maxManifestBytes = 64 * 1024;
+  static const int _maxApkBytes = 500 * 1024 * 1024;
 
   final http.Client _client;
   final bool _ownsClient;
+  final Duration _requestTimeout;
+  final Duration _downloadTimeout;
+  final String _publicKeyBase64;
+  final Future<Directory> Function() _temporaryDirectoryProvider;
 
-  Future<http.StreamedResponse> _sendHttpsGet(
+  Future<_UpdateHttpResponse> _sendHttpsGet(
     Uri initialUri,
     Map<String, String> headers, {
     required Duration timeout,
@@ -192,18 +252,32 @@ class UpdateService {
         );
       }
 
-      final request = http.Request('GET', uri)
+      final abortTrigger = Completer<void>();
+      final request = http.AbortableRequest(
+        'GET',
+        uri,
+        abortTrigger: abortTrigger.future,
+      )
         ..followRedirects = false
         ..headers.addAll(headers);
-      final response = await _client.send(request).timeout(timeout);
-      final location = response.headers['location'];
-      final isRedirect = response.isRedirect ||
-          (response.statusCode >= 300 &&
-              response.statusCode < 400 &&
+
+      final http.StreamedResponse rawResponse;
+      try {
+        rawResponse = await _client.send(request).timeout(timeout);
+      } on TimeoutException {
+        if (!abortTrigger.isCompleted) abortTrigger.complete();
+        rethrow;
+      }
+
+      final response = _UpdateHttpResponse(rawResponse, abortTrigger, timeout);
+      final location = rawResponse.headers['location'];
+      final isRedirect = rawResponse.isRedirect ||
+          (rawResponse.statusCode >= 300 &&
+              rawResponse.statusCode < 400 &&
               location != null);
       if (!isRedirect) return response;
 
-      await _cancelResponseBody(response);
+      await response.cancelBody();
       if (location == null || location.trim().isEmpty) {
         throw const FormatException('Update server returned a redirect without a Location.');
       }
@@ -224,11 +298,6 @@ class UpdateService {
     throw const FormatException('Too many redirects while retrieving an update.');
   }
 
-  Future<void> _cancelResponseBody(http.StreamedResponse response) async {
-    final subscription = response.stream.listen((_) {});
-    await subscription.cancel();
-  }
-
   Future<UpdateInfo?> check() async {
     if (updateManifestUrl.isEmpty || updatePublicKeyBase64.isEmpty) {
       throw const FormatException(
@@ -247,12 +316,14 @@ class UpdateService {
         'Pragma': 'no-cache',
         'User-Agent': 'IQ-Tunnel-Updater',
       },
-      timeout: const Duration(seconds: 20),
+      timeout: _requestTimeout,
     );
     if (response.statusCode == 404 || response.statusCode == 503) {
+      await response.cancelBody();
       throw const UpdateUnavailableException();
     }
     if (response.statusCode != 200) {
+      await response.cancelBody();
       throw HttpException(
         'Update server returned HTTP ${response.statusCode}',
         uri: manifestUri,
@@ -263,17 +334,20 @@ class UpdateService {
     // normal GET would allocate the entire response before rejecting it.
     final declaredLength = response.contentLength;
     if (declaredLength != null && declaredLength > _maxManifestBytes) {
-      await _cancelResponseBody(response);
+      await response.cancelBody();
       throw const FormatException('Update manifest is larger than 64 KiB.');
     }
     final manifestBytes = <int>[];
-    await for (final chunk in response.stream.timeout(
-      const Duration(seconds: 20),
-    )) {
-      if (manifestBytes.length + chunk.length > _maxManifestBytes) {
-        throw const FormatException('Update manifest is larger than 64 KiB.');
+    try {
+      await for (final chunk in response.stream) {
+        if (manifestBytes.length + chunk.length > _maxManifestBytes) {
+          throw const FormatException('Update manifest is larger than 64 KiB.');
+        }
+        manifestBytes.addAll(chunk);
       }
-      manifestBytes.addAll(chunk);
+    } catch (_) {
+      response.abort();
+      rethrow;
     }
     final json = jsonDecode(utf8.decode(manifestBytes)) as Map<String, dynamic>;
     final update = UpdateInfo.fromJson(json);
@@ -286,7 +360,7 @@ class UpdateService {
   }
 
   Future<void> _verifyManifest(UpdateInfo update) async {
-    final keyBytes = base64Decode(updatePublicKeyBase64);
+    final keyBytes = base64Decode(_publicKeyBase64);
     final signatureBytes = base64Decode(update.signature);
     if (keyBytes.length != 32 || signatureBytes.length != 64) {
       throw const FormatException('توقيع التحديث أو مفتاحه غير صالح.');
@@ -308,6 +382,8 @@ class UpdateService {
     if (!valid) throw const FormatException('تعذر التحقق من توقيع التحديث.');
   }
 
+  Future<void> verifyManifestForTesting(UpdateInfo update) => _verifyManifest(update);
+
   Future<File> download(
     UpdateInfo update, {
     required void Function(int received, int total) onProgress,
@@ -320,52 +396,74 @@ class UpdateService {
         'Cache-Control': 'no-cache',
         'User-Agent': 'IQ-Tunnel-Updater',
       },
-      timeout: const Duration(seconds: 30),
+      timeout: _downloadTimeout,
     );
     if (response.statusCode != 200) {
-      throw Exception('فشل تنزيل التحديث (${response.statusCode}).');
+      await response.cancelBody();
+      throw HttpException(
+        'فشل تنزيل التحديث (${response.statusCode}).',
+        uri: uri,
+      );
     }
     final total = response.contentLength ?? 0;
-    if (total <= 0 || total > 500 * 1024 * 1024) {
+    if (total <= 0 || total > _maxApkBytes) {
+      await response.cancelBody();
       throw const FormatException('حجم ملف التحديث غير معروف أو أكبر من الحد.');
     }
-    final directory = await getTemporaryDirectory();
-    final file = File('${directory.path}/iq-tunnel-update.apk');
-    if (await file.exists()) await file.delete();
-    final sink = file.openWrite();
 
+    late final Directory directory;
+    try {
+      directory = await _temporaryDirectoryProvider();
+    } catch (_) {
+      await response.cancelBody();
+      rethrow;
+    }
+    final file = File('${directory.path}/iq-tunnel-update.apk');
+    IOSink? sink;
+    var bodyStarted = false;
+    var bodyCompleted = false;
     var received = 0;
     try {
-      await for (final chunk in response.stream.timeout(
-        const Duration(seconds: 30),
-        onTimeout: (sink) => sink.addError(
-          TimeoutException('APK download stalled for 30 seconds.'),
-        ),
-      )) {
+      if (await file.exists()) await file.delete();
+      sink = file.openWrite();
+      bodyStarted = true;
+      await for (final chunk in response.stream) {
         received += chunk.length;
-        if (received > total || received > 500 * 1024 * 1024) {
+        if (received > total || received > _maxApkBytes) {
           throw const FormatException('حجم التنزيل تجاوز الحجم المتوقع.');
         }
         sink.add(chunk);
         onProgress(received, total);
       }
+      bodyCompleted = true;
       await sink.flush();
-    } catch (_) {
       await sink.close();
-      if (await file.exists()) await file.delete();
+      sink = null;
+
+      if (received != total) {
+        throw const FormatException('التنزيل غير مكتمل.');
+      }
+      final digest = (await sha256.bind(file.openRead()).first).toString();
+      if (digest != update.sha256) {
+        throw const FormatException('فشل التحقق من سلامة ملف التحديث (SHA-256).');
+      }
+      return file;
+    } catch (_) {
+      if (!bodyStarted) {
+        try {
+          await response.cancelBody();
+        } catch (_) {}
+      } else if (!bodyCompleted) {
+        response.abort();
+      }
+      try {
+        await sink?.close();
+      } catch (_) {}
+      try {
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
       rethrow;
     }
-    await sink.close();
-    if (received != total) {
-      await file.delete();
-      throw const FormatException('التنزيل غير مكتمل.');
-    }
-    final digest = (await sha256.bind(file.openRead()).first).toString();
-    if (digest != update.sha256) {
-      await file.delete();
-      throw const FormatException('فشل التحقق من سلامة ملف التحديث (SHA-256).');
-    }
-    return file;
   }
 
   void dispose() {

@@ -10,6 +10,11 @@ on:
         required: true
         type: boolean
         default: false
+      source_ref:
+        description: Private source ref (main for manual runs, or an exact 40-character commit SHA)
+        required: false
+        type: string
+        default: main
 
 permissions:
   contents: read
@@ -31,6 +36,76 @@ jobs:
           ref: main
           persist-credentials: false
 
+      - name: Validate private source ref and read-only deploy key
+        shell: bash
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+          SOURCE_DEPLOY_KEY: ${{ secrets.IQT_PROD_SOURCE_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ "$SOURCE_REF" != "main" && ! "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_ref must be main or a full 40-character commit SHA."
+            exit 1
+          fi
+          test -n "$SOURCE_DEPLOY_KEY" || {
+            echo "Missing Environment secret IQT_PROD_SOURCE_DEPLOY_KEY."
+            exit 1
+          }
+
+      - name: Checkout exact private source revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: loudply0-eng/IQ-Tunnel
+          ref: ${{ inputs.source_ref }}
+          ssh-key: ${{ secrets.IQT_PROD_SOURCE_DEPLOY_KEY }}
+          path: .iqt-private-source
+          persist-credentials: false
+
+      - name: Checkout private main history for trust verification
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: loudply0-eng/IQ-Tunnel
+          ref: main
+          ssh-key: ${{ secrets.IQT_PROD_SOURCE_DEPLOY_KEY }}
+          path: .iqt-private-main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify selected source commit belongs to private main history
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="$(git -C .iqt-private-source rev-parse HEAD)"
+          MAIN_SHA="$(git -C .iqt-private-main rev-parse HEAD)"
+          if ! git -C .iqt-private-main cat-file -e "$SOURCE_SHA^{commit}" 2>/dev/null; then
+            echo "Selected source commit is not present in private main history."
+            exit 1
+          fi
+          if ! git -C .iqt-private-main merge-base --is-ancestor "$SOURCE_SHA" "$MAIN_SHA"; then
+            echo "Selected source commit is not an ancestor of private main."
+            exit 1
+          fi
+          echo "Verified private source commit $SOURCE_SHA is reachable from main at $MAIN_SHA"
+
+      - name: Populate build workspace from verified private source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="$(git -C .iqt-private-source rev-parse HEAD)"
+          rsync -a --delete \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='.iqt-private-source/' \
+            --exclude='.iqt-private-main/' \
+            .iqt-private-source/ ./
+          rm -rf .iqt-private-source .iqt-private-main
+          echo "Using verified private IQ Tunnel source commit: $SOURCE_SHA"
+          test -s pubspec.yaml
+          test -s lib/main.dart
+          test -s tool/patch_libxray_android.py
+          test -s packages/iqtunnel_xray/pubspec.yaml
+          python3 .github/scripts/verify_vault_fail_closed.py
+
       - name: Free unused runner disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/system-images /opt/hostedtoolcache/CodeQL /usr/local/share/powershell /opt/ghc
@@ -39,7 +114,7 @@ jobs:
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: '3.50.0'
-          cache: true
+          cache: false
 
       - name: Validate permanent Android signing secrets
         env:
@@ -127,6 +202,9 @@ jobs:
         run: |
           flutter create --platforms=android --project-name iq_tunnel --org com.iqtunnel /tmp/iq_tunnel_scaffold
           cp -a /tmp/iq_tunnel_scaffold/android ./android
+
+      - name: Configure Android backup policy
+        run: python3 .github/scripts/configure_android_backup_policy.py
 
       - name: Configure Android Gradle compatibility
         run: |
@@ -288,7 +366,11 @@ jobs:
               if not isinstance(current, dict):
                   raise SystemExit("Published update manifest has an invalid JSON shape.")
               try:
-                  current_build = int(current["build_number"])
+                  raw_current_build = current["build_number"]
+                  # bool is a subclass of int; accept only a real JSON integer.
+                  if type(raw_current_build) is not int or raw_current_build < 0:
+                      raise ValueError("build_number must be a non-negative JSON integer")
+                  current_build = raw_current_build
               except (KeyError, TypeError, ValueError) as error:
                   raise SystemExit("Published update manifest has an invalid build_number.") from error
               if new_build <= current_build:
@@ -304,6 +386,61 @@ jobs:
           UPDATE_MANIFEST_URL: https://mahmoudaljuorany.store/updates/iq-tunnel/manifest.json
           UPDATE_PUBLIC_KEY: 4eOsYpXniRBp1ZTJjq5c3HbDW8tCvWbv1fr5PLVl+sk=
         run: flutter build apk --release --dart-define=UPDATE_MANIFEST_URL="$UPDATE_MANIFEST_URL" --dart-define=UPDATE_PUBLIC_KEY="$UPDATE_PUBLIC_KEY"
+
+      - name: Verify packaged Android backup policy with AAPT2
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          AAPT2="$(find "$ANDROID_HOME/build-tools" -type f -name aapt2 | sort -V | tail -1)"
+          test -n "$AAPT2" || { echo "Android Build Tools aapt2 is required for the release backup gate."; exit 1; }
+          python3 .github/scripts/verify_android_backup_policy.py \
+            --apk "$APK" \
+            --aapt2 "$AAPT2" \
+            --evidence-dir build/android-backup-policy-evidence \
+            --expect-not-debuggable
+
+      - name: Verify Android package identity
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          test -n "$AAPT"
+          BADGING="$("$AAPT" dump badging "$APK")"
+          VERSION_METADATA="$(python3 - <<'PY'
+          from pathlib import Path
+          version_lines = [
+              line.split(":", 1)[1].strip()
+              for line in Path("pubspec.yaml").read_text(encoding="utf-8").splitlines()
+              if line.startswith("version:")
+          ]
+          if len(version_lines) != 1:
+              raise SystemExit("pubspec.yaml must contain exactly one version entry")
+          version, separator, build_number = version_lines[0].partition("+")
+          if (
+              not separator
+              or not version
+              or any(not part.isdigit() for part in version.split("."))
+              or not build_number.isdigit()
+          ):
+              raise SystemExit("pubspec.yaml version must use numeric version+buildNumber")
+          print(version, build_number)
+          PY
+          )"
+          EXPECTED_VERSION="${VERSION_METADATA%% *}"
+          EXPECTED_BUILD_NUMBER="${VERSION_METADATA##* }"
+          test -n "$EXPECTED_VERSION" && test -n "$EXPECTED_BUILD_NUMBER"
+          printf '%s\n' "$BADGING" | grep -Fq "package: name='com.iqtunnel.iq_tunnel'" || {
+            echo "Signed APK applicationId does not match the established IQ Tunnel package identity."
+            exit 1
+          }
+          printf '%s\n' "$BADGING" | grep -Fq "versionName='$EXPECTED_VERSION'" || {
+            echo "Signed APK versionName does not match pubspec.yaml."
+            exit 1
+          }
+          printf '%s\n' "$BADGING" | grep -Fq "versionCode='$EXPECTED_BUILD_NUMBER'" || {
+            echo "Signed APK versionCode does not match pubspec.yaml build number."
+            exit 1
+          }
 
       - name: Verify APK signature and prepare artifact
         run: |
@@ -328,6 +465,14 @@ jobs:
           cp build/third-party/xray-core-v26.11.9-source.tar.gz build/iq-tunnel-signed-release/
           cp build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 build/iq-tunnel-signed-release/
           (cd build/iq-tunnel-signed-release && sha256sum IQ-Tunnel-*.apk xray-core-v26.11.9-source.tar.gz > SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        name: Upload signed APK backup-policy evidence
+        with:
+          name: iq-tunnel-android-backup-policy-evidence
+          path: build/android-backup-policy-evidence/
+          if-no-files-found: error
+          retention-days: 30
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

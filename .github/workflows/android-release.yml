@@ -36,19 +36,19 @@ jobs:
           ref: main
           persist-credentials: false
 
-      - name: Validate private source ref and read-only token
+      - name: Validate private source ref and read-only deploy key
         shell: bash
         env:
           SOURCE_REF: ${{ inputs.source_ref }}
-          SOURCE_READ_TOKEN: ${{ secrets.IQT_PROD_SOURCE_READ_TOKEN }}
+          SOURCE_DEPLOY_KEY: ${{ secrets.IQT_PROD_SOURCE_DEPLOY_KEY }}
         run: |
           set -euo pipefail
           if [[ "$SOURCE_REF" != "main" && ! "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
             echo "source_ref must be main or a full 40-character commit SHA."
             exit 1
           fi
-          test -n "$SOURCE_READ_TOKEN" || {
-            echo "Missing Environment secret IQT_PROD_SOURCE_READ_TOKEN."
+          test -n "$SOURCE_DEPLOY_KEY" || {
+            echo "Missing Environment secret IQT_PROD_SOURCE_DEPLOY_KEY."
             exit 1
           }
 
@@ -57,7 +57,7 @@ jobs:
         with:
           repository: loudply0-eng/IQ-Tunnel
           ref: ${{ inputs.source_ref }}
-          token: ${{ secrets.IQT_PROD_SOURCE_READ_TOKEN }}
+          ssh-key: ${{ secrets.IQT_PROD_SOURCE_DEPLOY_KEY }}
           path: .iqt-private-source
           persist-credentials: false
 
@@ -66,7 +66,7 @@ jobs:
         with:
           repository: loudply0-eng/IQ-Tunnel
           ref: main
-          token: ${{ secrets.IQT_PROD_SOURCE_READ_TOKEN }}
+          ssh-key: ${{ secrets.IQT_PROD_SOURCE_DEPLOY_KEY }}
           path: .iqt-private-main
           fetch-depth: 0
           persist-credentials: false
@@ -107,6 +107,9 @@ jobs:
           test -s lib/main.dart
           test -s tool/patch_libxray_android.py
           test -s packages/iqtunnel_xray/pubspec.yaml
+          # Refuse to build from a private source revision that still regenerates
+          # the local vault key when existing encrypted profile data is read.
+          python3 .github/scripts/verify_vault_fail_closed.py
 
       - name: Free unused runner disk space
         run: |
@@ -115,7 +118,7 @@ jobs:
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: '3.50.0'
-          cache: true
+          cache: false
       - name: Validate required secrets
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.IQT_PROD_ANDROID_KEYSTORE_BASE64 }}
@@ -125,10 +128,9 @@ jobs:
           ORACLE_SSH_KEY: ${{ secrets.IQT_PROD_ORACLE_SSH_KEY }}
           ORACLE_HOST: ${{ secrets.IQT_PROD_ORACLE_HOST }}
           ORACLE_USER: ${{ secrets.IQT_PROD_ORACLE_USER }}
-          ORACLE_DEPLOY_DIR: ${{ secrets.IQT_PROD_ORACLE_DEPLOY_DIR }}
           ORACLE_KNOWN_HOSTS: ${{ secrets.IQT_PROD_ORACLE_KNOWN_HOSTS }}
           UPDATE_PRIVATE_KEY_BASE64: ${{ secrets.IQT_PROD_UPDATE_PRIVATE_KEY_BASE64 }}
-          SOURCE_READ_TOKEN: ${{ secrets.IQT_PROD_SOURCE_READ_TOKEN }}
+          SOURCE_DEPLOY_KEY: ${{ secrets.IQT_PROD_SOURCE_DEPLOY_KEY }}
         run: |
           set -euo pipefail
           test -n "$ANDROID_KEYSTORE_BASE64" || { echo "Missing ANDROID_KEYSTORE_BASE64"; exit 1; }
@@ -138,10 +140,9 @@ jobs:
           test -n "$ORACLE_SSH_KEY" || { echo "Missing ORACLE_SSH_KEY"; exit 1; }
           test -n "$ORACLE_HOST" || { echo "Missing ORACLE_HOST"; exit 1; }
           test -n "$ORACLE_USER" || { echo "Missing ORACLE_USER"; exit 1; }
-          test -n "$ORACLE_DEPLOY_DIR" || { echo "Missing ORACLE_DEPLOY_DIR"; exit 1; }
           test -n "$ORACLE_KNOWN_HOSTS" || { echo "Missing ORACLE_KNOWN_HOSTS"; exit 1; }
           test -n "$UPDATE_PRIVATE_KEY_BASE64" || { echo "Missing UPDATE_PRIVATE_KEY_BASE64"; exit 1; }
-          test -n "$SOURCE_READ_TOKEN" || { echo "Missing IQT_PROD_SOURCE_READ_TOKEN"; exit 1; }
+          test -n "$SOURCE_DEPLOY_KEY" || { echo "Missing IQT_PROD_SOURCE_DEPLOY_KEY"; exit 1; }
 
       - name: Install Go for the pinned libXray build
         uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -261,6 +262,9 @@ jobs:
           p.write_text(s)
           PY
 
+      - name: Configure Android backup policy
+        run: python3 .github/scripts/configure_android_backup_policy.py
+
       - name: Configure permanent Android signing
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.IQT_PROD_ANDROID_KEYSTORE_BASE64 }}
@@ -361,9 +365,11 @@ jobs:
                   if len(raw) > 64 * 1024:
                       raise SystemExit("Published update manifest exceeds 64 KiB.")
                   current = json.loads(raw)
-                  current_build = int(current["build_number"])
-                  if current_build < 0:
-                      raise SystemExit("Published build number is invalid.")
+              raw_current_build = current.get("build_number")
+              # bool is a subclass of int in Python; require an actual JSON integer.
+              if type(raw_current_build) is not int or raw_current_build < 0:
+                  raise SystemExit("Published build number must be a non-negative integer.")
+              current_build = raw_current_build
           except urllib.error.HTTPError as error:
               if error.code != 404 or not error.geturl().startswith("https://"):
                   raise
@@ -379,6 +385,27 @@ jobs:
           UPDATE_MANIFEST_URL: https://mahmoudaljuorany.store/updates/iq-tunnel/manifest.json
           UPDATE_PUBLIC_KEY: 4eOsYpXniRBp1ZTJjq5c3HbDW8tCvWbv1fr5PLVl+sk=
         run: flutter build apk --release --build-number="${{ steps.release_meta.outputs.build_number }}" --dart-define=UPDATE_MANIFEST_URL="$UPDATE_MANIFEST_URL" --dart-define=UPDATE_PUBLIC_KEY="$UPDATE_PUBLIC_KEY"
+
+      - name: Verify packaged Android backup policy with AAPT2
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          AAPT2="$(find "$ANDROID_HOME/build-tools" -type f -name aapt2 | sort -V | tail -1)"
+          test -n "$AAPT2" || { echo "Android Build Tools aapt2 is required for the release backup gate."; exit 1; }
+          python3 .github/scripts/verify_android_backup_policy.py \
+            --apk "$APK" \
+            --aapt2 "$AAPT2" \
+            --evidence-dir build/android-backup-policy-evidence \
+            --expect-not-debuggable
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        name: Upload Android backup-policy verification evidence
+        with:
+          name: iq-tunnel-android-backup-policy-evidence
+          path: build/android-backup-policy-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
 
       - name: Ensure release build number advances the published manifest
         env:
@@ -426,7 +453,11 @@ jobs:
           if current is not None:
               try:
                   version = current["version"]
-                  current_build = int(current["build_number"])
+                  raw_current_build = current["build_number"]
+                  # Reject floats and booleans instead of silently truncating/coercing them.
+                  if type(raw_current_build) is not int or raw_current_build < 0:
+                      raise ValueError("build_number must be a non-negative JSON integer")
+                  current_build = raw_current_build
                   download_url = current["download_url"]
                   sha256 = str(current["sha256"]).lower()
                   notes = current.get("notes", "")
@@ -484,6 +515,29 @@ jobs:
                   )
           PY
 
+      - name: Verify Android package identity
+        env:
+          EXPECTED_VERSION: ${{ steps.release_meta.outputs.version }}
+          EXPECTED_BUILD_NUMBER: ${{ steps.release_meta.outputs.build_number }}
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          test -n "$AAPT"
+          BADGING="$("$AAPT" dump badging "$APK")"
+          printf '%s\n' "$BADGING" | grep -Fq "package: name='com.iqtunnel.iq_tunnel'" || {
+            echo "Release APK applicationId does not match the package identity established by the reviewed CI APK."
+            exit 1
+          }
+          printf '%s\n' "$BADGING" | grep -Fq "versionName='$EXPECTED_VERSION'" || {
+            echo "Release APK versionName does not match release metadata."
+            exit 1
+          }
+          printf '%s\n' "$BADGING" | grep -Fq "versionCode='$EXPECTED_BUILD_NUMBER'" || {
+            echo "Release APK versionCode does not match the monotonic build number."
+            exit 1
+          }
+
       - name: Verify Android APK signature
         run: |
           APK=build/app/outputs/flutter-apk/app-release.apk
@@ -510,16 +564,16 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      - name: Publish APK and signed manifest to Oracle
+      - name: Publish APK and signed manifest to Oracle over restricted SFTP
         env:
           ORACLE_SSH_KEY: ${{ secrets.IQT_PROD_ORACLE_SSH_KEY }}
           ORACLE_HOST: ${{ secrets.IQT_PROD_ORACLE_HOST }}
           ORACLE_USER: ${{ secrets.IQT_PROD_ORACLE_USER }}
-          ORACLE_DEPLOY_DIR: ${{ secrets.IQT_PROD_ORACLE_DEPLOY_DIR }}
           ORACLE_KNOWN_HOSTS: ${{ secrets.IQT_PROD_ORACLE_KNOWN_HOSTS }}
           UPDATE_PRIVATE_KEY_BASE64: ${{ secrets.IQT_PROD_UPDATE_PRIVATE_KEY_BASE64 }}
           VERSION: ${{ steps.release_meta.outputs.version }}
           BUILD_NUMBER: ${{ steps.release_meta.outputs.build_number }}
+        shell: bash
         run: |
           set -euo pipefail
           umask 077
@@ -528,38 +582,95 @@ jobs:
           import base64, os, re
           host = os.environ["ORACLE_HOST"].strip()
           user = os.environ["ORACLE_USER"].strip()
-          dest = os.environ["ORACLE_DEPLOY_DIR"].strip()
+          version = os.environ["VERSION"].strip()
+          build = os.environ["BUILD_NUMBER"].strip()
           if not re.fullmatch(r"[A-Za-z0-9.-]+", host):
               raise SystemExit("ORACLE_HOST contains unsafe characters.")
-          if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*", user):
-              raise SystemExit("ORACLE_USER contains unsafe characters.")
-          if not re.fullmatch(r"/[A-Za-z0-9._/-]+", dest) or ".." in dest.split("/"):
-              raise SystemExit("ORACLE_DEPLOY_DIR must be a safe absolute path.")
+          if user != "iqt-deploy":
+              raise SystemExit("ORACLE_USER must be the dedicated SFTP-only iqt-deploy account.")
+          if not re.fullmatch(r"[0-9A-Za-z.+-]+", version):
+              raise SystemExit("VERSION contains unsafe characters.")
+          if not re.fullmatch(r"[0-9]+", build):
+              raise SystemExit("BUILD_NUMBER must be numeric.")
           value = os.environ["ORACLE_SSH_KEY"].replace("\r", "").strip()
           data = value.encode() if "-----BEGIN " in value else base64.b64decode("".join(value.split()), validate=True)
           with open(os.path.expanduser("~/.ssh/id_ed25519"), "wb") as f:
               f.write(data.rstrip() + bytes([10]))
-          known = os.environ["ORACLE_KNOWN_HOSTS"].replace("\n", "\n").strip() + "\n"
+          known = os.environ["ORACLE_KNOWN_HOSTS"].strip() + "\n"
+          if not known.strip():
+              raise SystemExit("ORACLE_KNOWN_HOSTS is empty.")
           with open(os.path.expanduser("~/.ssh/known_hosts"), "w") as f:
               f.write(known)
           PY
           chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
           ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null
-          DEST="$ORACLE_DEPLOY_DIR"
-          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes "$ORACLE_USER@$ORACLE_HOST" "mkdir -p '$DEST'"
-          scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes build/app/outputs/flutter-apk/app-release.apk "$ORACLE_USER@$ORACLE_HOST:$DEST/iq-tunnel-$VERSION-$BUILD_NUMBER.apk"
-          scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes build/third-party/xray-core-v26.11.9-source.tar.gz "$ORACLE_USER@$ORACLE_HOST:$DEST/xray-core-v26.11.9-source.tar.gz"
-          scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 "$ORACLE_USER@$ORACLE_HOST:$DEST/xray-core-v26.11.9-source.tar.gz.sha256"
-          PUBLIC_BASE="https://mahmoudaljuorany.store/updates/iq-tunnel"
-          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/iq-tunnel-$VERSION-$BUILD_NUMBER.apk" >/dev/null
-          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz" >/dev/null
-          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 --head "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz.sha256" >/dev/null
+
+          # OpenSSH requires the ChrootDirectory itself to remain root-owned
+          # and non-writable. The dedicated iqt-deploy account therefore writes
+          # only inside the pre-created writable /publish child directory.
+          # The OpenSSH batch command is "rename", not "posix-rename"; the client
+          # automatically sends the POSIX extension when the server supports it.
+          PUBLISH_DIR="/publish"
+          PROBE_SOURCE="$PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.rename-source.tmp"
+          PROBE_TARGET="$PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.rename-target.tmp"
+          : > /tmp/iqt-sftp-rename-probe-source
+          : > /tmp/iqt-sftp-rename-probe-target
+          cleanup_sftp_probe() {
+            sftp -b - \
+              -i ~/.ssh/id_ed25519 \
+              -oBatchMode=yes \
+              -oStrictHostKeyChecking=yes \
+              -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
+              -oIdentitiesOnly=yes \
+              "$ORACLE_USER@$ORACLE_HOST" >/dev/null 2>&1 <<SFTP_CLEANUP || true
+          -rm $PROBE_SOURCE
+          -rm $PROBE_TARGET
+          -rm $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.apk.tmp
+          -rm $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.xray.tmp
+          -rm $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.sha256.tmp
+          -rm $PUBLISH_DIR/.manifest-$GITHUB_RUN_ID.tmp
+          SFTP_CLEANUP
+            rm -f /tmp/iqt-sftp-rename-probe-source /tmp/iqt-sftp-rename-probe-target
+          }
+          trap cleanup_sftp_probe EXIT
+
+          sftp -vv -b - \
+            -i ~/.ssh/id_ed25519 \
+            -oBatchMode=yes \
+            -oStrictHostKeyChecking=yes \
+            -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -oIdentitiesOnly=yes \
+            "$ORACLE_USER@$ORACLE_HOST" > /tmp/iqt-sftp-capabilities.log 2>&1 <<SFTP_PROBE
+          pwd
+          ls -l /
+          cd $PUBLISH_DIR
+          pwd
+          put /tmp/iqt-sftp-rename-probe-source $PROBE_SOURCE
+          put /tmp/iqt-sftp-rename-probe-target $PROBE_TARGET
+          rename $PROBE_SOURCE $PROBE_TARGET
+          rm $PROBE_TARGET
+          SFTP_PROBE
+          grep -Fq 'Remote working directory: /' /tmp/iqt-sftp-capabilities.log || {
+            echo "SFTP account did not start at its jailed root; refusing to publish."
+            exit 1
+          }
+          grep -Fq 'Remote working directory: /publish' /tmp/iqt-sftp-capabilities.log || {
+            echo "SFTP publish directory /publish is missing or not accessible; refusing to publish."
+            exit 1
+          }
+          grep -Fq 'Sending SSH2_FXP_EXTENDED(posix-rename@openssh.com)' /tmp/iqt-sftp-capabilities.log || {
+            echo "OpenSSH did not perform POSIX replacement during the SFTP preflight; refusing to publish."
+            exit 1
+          }
+
           printf '%s' "$UPDATE_PRIVATE_KEY_BASE64" | tr -d '[:space:]' | base64 --decode > /tmp/iq-update-private.pem
           python3 - <<'PY'
           import base64, hashlib, json, os
           apk = "build/app/outputs/flutter-apk/app-release.apk"
           with open(apk, "rb") as f:
               digest = hashlib.sha256(f.read()).hexdigest()
+          with open("/tmp/iq-update-apk.sha256", "w", encoding="ascii") as f:
+              f.write(digest)
           manifest = {
               "version": os.environ["VERSION"],
               "build_number": int(os.environ["BUILD_NUMBER"]),
@@ -584,11 +695,106 @@ jobs:
           with open("/tmp/iq-update-manifest.json", "w", encoding="utf-8") as f:
               json.dump(manifest, f, ensure_ascii=False, separators=(",", ":"))
           PY
-          scp -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes /tmp/iq-update-manifest.json "$ORACLE_USER@$ORACLE_HOST:$DEST/.manifest-${GITHUB_RUN_ID}.tmp"
-          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o IdentitiesOnly=yes "$ORACLE_USER@$ORACLE_HOST" "mv -f -- '$DEST/.manifest-${GITHUB_RUN_ID}.tmp' '$DEST/manifest.json'"
-          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' "https://mahmoudaljuorany.store/updates/iq-tunnel/manifest.json" -o /tmp/iq-update-manifest-published.json
+
+          sftp -b - \
+            -i ~/.ssh/id_ed25519 \
+            -oBatchMode=yes \
+            -oStrictHostKeyChecking=yes \
+            -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -oIdentitiesOnly=yes \
+            "$ORACLE_USER@$ORACLE_HOST" <<SFTP_BATCH
+          put build/app/outputs/flutter-apk/app-release.apk $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.apk.tmp
+          rename $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.apk.tmp $PUBLISH_DIR/iq-tunnel-$VERSION-$BUILD_NUMBER.apk
+          put build/third-party/xray-core-v26.11.9-source.tar.gz $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.xray.tmp
+          rename $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.xray.tmp $PUBLISH_DIR/xray-core-v26.11.9-source.tar.gz
+          put build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.sha256.tmp
+          rename $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.sha256.tmp $PUBLISH_DIR/xray-core-v26.11.9-source.tar.gz.sha256
+          SFTP_BATCH
+
+          PUBLIC_BASE="https://mahmoudaljuorany.store/updates/iq-tunnel"
+          APK_URL="$PUBLIC_BASE/iq-tunnel-$VERSION-$BUILD_NUMBER.apk"
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 -D /tmp/iq-update-apk-headers.txt "$APK_URL" -o /tmp/iq-update-apk-published.apk
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          raw = Path("/tmp/iq-update-apk-headers.txt").read_text(encoding="iso-8859-1")
+          blocks = re.split(r"\r?\n\r?\n", raw.strip())
+          final = next((block for block in reversed(blocks) if block.startswith("HTTP/")), "")
+          if not final:
+              raise SystemExit("Could not determine final APK HTTP response headers.")
+          lines = final.splitlines()
+          if not re.match(r"^HTTP/\S+ 200(?:\s|$)", lines[0]):
+              raise SystemExit("Published APK endpoint did not return HTTP 200.")
+          lengths = [line.split(":", 1)[1].strip() for line in lines[1:] if line.lower().startswith("content-length:")]
+          if len(lengths) != 1 or not lengths[0].isdigit() or int(lengths[0]) <= 0:
+              raise SystemExit("Published APK endpoint must provide one positive Content-Length.")
+          actual_size = Path("/tmp/iq-update-apk-published.apk").stat().st_size
+          if int(lengths[0]) != actual_size:
+              raise SystemExit(
+                  f"Published APK Content-Length ({lengths[0]}) does not match downloaded size ({actual_size})."
+              )
+          print(f"Verified positive APK Content-Length: {actual_size} bytes")
+          PY
+          EXPECTED_APK_SHA256="$(cat /tmp/iq-update-apk.sha256)"
+          ACTUAL_APK_SHA256="$(sha256sum /tmp/iq-update-apk-published.apk | awk '{print $1}')"
+          test "$ACTUAL_APK_SHA256" = "$EXPECTED_APK_SHA256" || {
+            echo "Published APK SHA-256 does not match the locally built APK."
+            exit 1
+          }
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 300 "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz" -o /tmp/iq-xray-core-published.tar.gz
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 -H 'Cache-Control: no-cache, no-store' "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz.sha256" -o /tmp/iq-xray-core-published.tar.gz.sha256
+          python3 - <<'PY'
+          import hashlib
+          import re
+          from pathlib import Path
+
+          local_sidecar = Path("build/third-party/xray-core-v26.11.9-source.tar.gz.sha256")
+          published_sidecar = Path("/tmp/iq-xray-core-published.tar.gz.sha256")
+          published_archive = Path("/tmp/iq-xray-core-published.tar.gz")
+
+          def read_digest(path: Path) -> str:
+              lines = path.read_text(encoding="ascii").splitlines()
+              if len(lines) != 1:
+                  raise SystemExit(f"Checksum sidecar must contain exactly one line: {path}")
+              fields = lines[0].split()
+              if not fields or not re.fullmatch(r"[0-9a-f]{64}", fields[0]):
+                  raise SystemExit(f"Checksum sidecar contains an invalid SHA-256: {path}")
+              return fields[0]
+
+          expected = read_digest(local_sidecar)
+          served = read_digest(published_sidecar)
+          if served != expected:
+              raise SystemExit("Published Xray SHA-256 sidecar does not match the local release sidecar.")
+
+          digest = hashlib.sha256()
+          with published_archive.open("rb") as stream:
+              while True:
+                  chunk = stream.read(1024 * 1024)
+                  if not chunk:
+                      break
+                  digest.update(chunk)
+          actual = digest.hexdigest()
+          if actual != expected:
+              raise SystemExit("Published Xray source archive SHA-256 does not match the locally built archive.")
+          print(f"Verified published Xray source archive SHA-256: {actual}")
+          PY
+          # Keep the old manifest live until the new APK is publicly served
+          # with the expected positive Content-Length and matching SHA-256.
+          # Publishing the signed manifest is the final activation step.
+          sftp -b - \
+            -i ~/.ssh/id_ed25519 \
+            -oBatchMode=yes \
+            -oStrictHostKeyChecking=yes \
+            -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -oIdentitiesOnly=yes \
+            "$ORACLE_USER@$ORACLE_HOST" <<SFTP_MANIFEST
+          put /tmp/iq-update-manifest.json $PUBLISH_DIR/.manifest-$GITHUB_RUN_ID.tmp
+          rename $PUBLISH_DIR/.manifest-$GITHUB_RUN_ID.tmp $PUBLISH_DIR/manifest.json
+          SFTP_MANIFEST
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' "$PUBLIC_BASE/manifest.json" -o /tmp/iq-update-manifest-published.json
           cmp --silent /tmp/iq-update-manifest.json /tmp/iq-update-manifest-published.json
 
       - name: Remove signing material
         if: always()
-        run: rm -f android/key.properties android/app/upload-keystore.jks ~/.ssh/id_ed25519 /tmp/iq-update-private.pem /tmp/iq-update-public.pem /tmp/iq-update-payload.json /tmp/iq-update-manifest-base.json /tmp/iq-update-signature.bin /tmp/iq-update-manifest.json
+        run: rm -f android/key.properties android/app/upload-keystore.jks ~/.ssh/id_ed25519 /tmp/iq-update-private.pem /tmp/iq-update-public.pem /tmp/iq-update-payload.json /tmp/iq-update-manifest-base.json /tmp/iq-update-signature.bin /tmp/iq-update-manifest.json /tmp/iq-update-apk.sha256 /tmp/iq-update-apk-published.apk /tmp/iq-update-apk-headers.txt /tmp/iq-xray-core-published.tar.gz /tmp/iq-xray-core-published.tar.gz.sha256 /tmp/iqt-sftp-capabilities.log

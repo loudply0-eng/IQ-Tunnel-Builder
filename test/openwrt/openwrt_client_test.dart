@@ -222,6 +222,72 @@ void main() {
       expect(sent, isFalse);
     });
 
+    test('accepts only explicit local address ranges for opted-in HTTP', () async {
+      var sent = 0;
+      final client = OpenWrtClient(
+        client: MockClient((request) async {
+          sent++;
+          return http.Response(jsonEncode({'result': [6]}), 200);
+        }),
+      );
+
+      for (final address in [
+        'http://10.0.0.1',
+        'http://172.16.0.1',
+        'http://172.31.255.254',
+        'http://192.168.0.1',
+        'http://127.0.0.1',
+        'http://169.254.1.1',
+        'http://localhost',
+        'http://[::1]',
+        'http://[fc00::1]',
+        'http://[fd12:3456::1]',
+        'http://[fe80::1]',
+      ]) {
+        await expectLater(
+          client.inspect(
+            address: address,
+            username: 'root',
+            password: 'secret',
+            allowInsecureHttp: true,
+          ),
+          throwsA(isA<OpenWrtException>()),
+        );
+      }
+      expect(sent, 11, reason: 'Each local address should pass URL policy and reach the mocked ubus endpoint.');
+    });
+
+    test('blocks shared, multicast, broadcast and mapped IPv6 HTTP destinations', () async {
+      var sent = false;
+      final client = OpenWrtClient(
+        client: MockClient((request) async {
+          sent = true;
+          return http.Response('{}', 200);
+        }),
+      );
+
+      for (final address in [
+        'http://100.64.0.1',
+        'http://100.127.255.254',
+        'http://224.0.0.1',
+        'http://255.255.255.255',
+        'http://8.8.8.8',
+        'http://[2001:4860:4860::8888]',
+        'http://[::ffff:192.168.1.1]',
+      ]) {
+        await expectLater(
+          client.inspect(
+            address: address,
+            username: 'root',
+            password: 'secret',
+            allowInsecureHttp: true,
+          ),
+          throwsA(isA<OpenWrtException>()),
+        );
+      }
+      expect(sent, isFalse);
+    });
+
     test('rejects URL-embedded credentials and unexpected paths', () async {
       final client = OpenWrtClient(
         client: MockClient((request) async => http.Response('{}', 200)),
