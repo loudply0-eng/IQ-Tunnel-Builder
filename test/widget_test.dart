@@ -58,6 +58,7 @@ void main() {
 
     expect(find.text('IQ Tunnel'), findsWidgets);
     expect(find.text('إضافة رابط أو اشتراك VPN'), findsOneWidget);
+    expect(find.text('اتصل بالنفق لعرض إحصائيات المرور'), findsOneWidget);
     expect(fakeUpdateService.checkCount, 1);
 
     await tester.tap(find.byTooltip('الإعدادات'));
