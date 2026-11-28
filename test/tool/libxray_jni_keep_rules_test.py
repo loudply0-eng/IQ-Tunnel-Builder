@@ -18,8 +18,14 @@ class LibXrayJniKeepRulesTests(unittest.TestCase):
         self.assertTrue(rules_path.is_file(), "Android plugin consumer rules are missing")
 
         rules = rules_path.read_text(encoding="utf-8")
-        self.assertRegex(rules, r"(?m)^-keep\s+class\s+go\.\*\*\s+\{\s*\*\s*;\s*\}$")
-        self.assertRegex(rules, r"(?m)^-keep\s+class\s+libXray\.\*\*\s+\{\s*\*\s*;\s*\}$")
+        self.assertRegex(rules, r"(?m)^-keep\s+class\s+go\.\*\*\s+\{\s\*\s*;\s*\}$")
+        self.assertRegex(rules, r"(?m)^-keep\s+class\s+libXray\.\*\*\s+\{\s\*\s*;\s*\}$")
+
+    def test_release_dex_verifier_fails_closed_on_missing_seq_helper(self):
+        verifier = (ROOT / "tool" / "verify_libxray_jni_dex.py").read_text(encoding="utf-8")
+        self.assertIn('type_descriptors[class_index] != "Lgo/Seq;"', verifier)
+        self.assertIn('if "getRef" not in methods:', verifier)
+        self.assertIn("Java_go_Seq_init", verifier)
 
 
 if __name__ == "__main__":
