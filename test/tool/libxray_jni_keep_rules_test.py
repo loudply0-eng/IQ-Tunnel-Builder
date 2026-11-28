@@ -13,18 +13,14 @@ class LibXrayJniKeepRulesTests(unittest.TestCase):
         rules_path = ANDROID_PLUGIN / "consumer-rules.pro"
         self.assertRegex(
             gradle,
-            r'(?s)defaultConfig\s*\{[^}]*consumerProguardFiles\("consumer-rules\.pro"\)',
+            r'(?s)defaultConfig\\s*\\{[^}]*consumerProguardFiles\\("consumer-rules\\.pro"\\)',
         )
         self.assertTrue(rules_path.is_file(), "Android plugin consumer rules are missing")
 
         rules = rules_path.read_text(encoding="utf-8")
-        self.assertRegex(rules, r"(?m)^-keep\s+class\s+go\.\*\*\s+\{\s*\*\s*;\s*\}$")
-        self.assertRegex(rules, r"(?m)^-keep\s+class\s+libXray\.\*\*\s+\{\s*\*\s*;\s*\}$")
-
-    def test_jni_helper_names_are_explicitly_covered(self):
-        rules = (ANDROID_PLUGIN / "consumer-rules.pro").read_text(encoding="utf-8")
-        for helper in ("Seq.getRef", "Seq.incRef", "Seq.incRefnum", "Seq.decRef", "Seq.throwException"):
-            self.assertIn(helper, rules)
+        self.assertRegex(rules, r"(?m)^-keep\\s+class\\s+go\\.\\*\\*\\s+\\{\\s*\\*\\s*;\\s*\\}$")
+        self.assertRegex(rules, r"(?m)^-keep\\s+class\\s+libXray\\.\\*\\*\\s+\\{\\s*\\*\\s*;\\s*\\}$")
+        self.assertIn("verify_libxray_jni_dex.py", (ROOT / ".github" / "workflows" / "android-ci.yml").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
