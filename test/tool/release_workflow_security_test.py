@@ -372,7 +372,12 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             "cc96499ac23bf3a9101b2a7cc7d19feef852e61a5902860abe15218a8968b017",
             signer_step,
         )
-        self.assertIn("test \"$SIGNER_SHA256\" = \"$EXPECTED_SIGNER_SHA256\"", signer_step)
+        self.assertIn('SIGNER_OUTPUT="$(\"$APKSIGNER\" verify --print-certs "$APK")"', signer_step)
+        self.assertIn("certificate SHA-256 digest:", signer_step)
+        self.assertIn("EXPECTED_SIGNER_SHA256", signer_step)
+        self.assertIn('if [[ "$SIGNER_SHA256" != "$EXPECTED_SIGNER_SHA256" ]]; then', signer_step)
+        self.assertIn('if [[ -z "$SIGNER_SHA256" ]]; then', signer_step)
+        self.assertIn("APK signer certificate matches the approved permanent IQ Tunnel key.", signer_step)
 
     def test_release_verifies_apk_before_publishing_signed_manifest(self):
         workflow = self.read_workflow("android-release.yml")
