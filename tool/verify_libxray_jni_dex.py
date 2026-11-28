@@ -6,14 +6,13 @@ from __future__ import annotations
 import argparse
 import re
 import struct
-import sys
 import zipfile
 from pathlib import Path
 
 
 def read_u32(data: bytes, offset: int) -> int:
     if offset < 0 or offset + 4 > len(data):
-        raise ValueError(f"Dex uint32 offset is out of bounds: {offset}")
+        raise ValueError(f"DEX uint32 offset is out of bounds: {offset}")
     return struct.unpack_from("<I", data, offset)[0]
 
 
@@ -33,7 +32,7 @@ def read_uleb128(data: bytes, offset: int) -> tuple[int, int]:
 
 
 def dex_go_seq_methods(data: bytes) -> set[str] | None:
-    if len(data) < 112 or not data.startswith(b"dex\\n"):
+    if len(data) < 112 or not data.startswith(b"dex\n"):
         raise ValueError("APK contains an invalid or unsupported DEX file")
 
     string_count, string_offset = read_u32(data, 56), read_u32(data, 60)
@@ -54,11 +53,9 @@ def dex_go_seq_methods(data: bytes) -> set[str] | None:
     for index in range(string_count):
         string_data_offset = read_u32(data, string_offset + index * 4)
         _, cursor = read_uleb128(data, string_data_offset)
-        terminator = data.find(b"\\x00", cursor)
+        terminator = data.find(b"\x00", cursor)
         if terminator < 0:
             raise ValueError("Unterminated string_data_item in DEX")
-        # DEX uses Modified UTF-8. All identifiers and descriptors we compare
-        # here are ASCII; replacement keeps unrelated strings harmless.
         strings.append(data[cursor:terminator].decode("utf-8", errors="replace"))
 
     type_descriptors: list[str] = []
@@ -93,13 +90,10 @@ def dex_go_seq_methods(data: bytes) -> set[str] | None:
         direct_methods, cursor = read_uleb128(data, cursor)
         virtual_methods, cursor = read_uleb128(data, cursor)
 
-        # Skip encoded fields (field_idx_diff, access_flags).
         for field_count in (static_fields, instance_fields):
-            field_index = 0
             for _ in range(field_count):
-                delta, cursor = read_uleb128(data, cursor)
-                _, cursor = read_uleb128(data, cursor)
-                field_index += delta
+                _, cursor = read_uleb128(data, cursor)  # field_idx_diff
+                _, cursor = read_uleb128(data, cursor)  # access_flags
 
         found: set[str] = set()
         for method_group_count in (direct_methods, virtual_methods):
@@ -121,13 +115,11 @@ def verify_apk(apk_path: Path) -> None:
     if not apk_path.is_file() or not zipfile.is_zipfile(apk_path):
         raise SystemExit(f"Release APK is missing or invalid: {apk_path}")
 
-    dex_entries: list[str]
     try:
         with zipfile.ZipFile(apk_path) as apk:
             dex_entries = sorted(
                 name for name in apk.namelist()
-                if re.fullmatch(r"classes(?:[2-9][0-9]*)?\\.dex", name)
-                or name == "classes.dex"
+                if name == "classes.dex" or re.fullmatch(r"classes[0-9]+\.dex", name)
             )
             if not dex_entries:
                 raise SystemExit("Release APK contains no DEX bytecode")
