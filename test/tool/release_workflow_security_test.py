@@ -259,7 +259,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("ls -l /", deploy_step)
         self.assertIn("cd $PUBLISH_DIR", deploy_step)
         self.assertIn("sftp> cd .", deploy_step)
-        self.assertIn("Remote working directory: /incomingincoming", deploy_step)
+        self.assertIn("Remote working directory: /incoming", deploy_step)
         self.assertIn("put /tmp/iqt-sftp-rename-probe-source $PROBE_SOURCE", deploy_step)
         self.assertIn("put /tmp/iqt-sftp-rename-probe-target $PROBE_TARGET", deploy_step)
         self.assertIn("Sending SSH2_FXP_EXTENDED(posix-rename@openssh.com)", deploy_step)
