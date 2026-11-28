@@ -631,12 +631,12 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
           ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null
 
-          # OpenSSH requires the ChrootDirectory itself to remain root-owned
-          # and non-writable. The dedicated iqt-deploy account therefore writes
-          # only inside the pre-created writable /publish child directory.
+          # The forced SFTP start directory is /incoming inside this account's
+          # chroot (/var/www/ota-jail/iqt-jail). Keep paths relative to that
+          # existing writable directory, which is the isolated IQ Tunnel publish tree.
           # The OpenSSH batch command is "rename", not "posix-rename"; the client
           # automatically sends the POSIX extension when the server supports it.
-          PUBLISH_DIR="/publish"
+          PUBLISH_DIR="."
           PROBE_SOURCE="$PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.rename-source.tmp"
           PROBE_TARGET="$PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.rename-target.tmp"
           : > /tmp/iqt-sftp-rename-probe-source
@@ -682,12 +682,12 @@ jobs:
             exit 1
           fi
           echo "SFTP preflight connection and rename probe completed."
-          grep -Fq 'Remote working directory: /' /tmp/iqt-sftp-capabilities.log || {
-            echo "SFTP account did not start at its jailed root; refusing to publish."
+          grep -Fq 'Remote working directory: /incoming' /tmp/iqt-sftp-capabilities.log || {
+            echo "SFTP account did not start in its configured IQ Tunnel incoming directory; refusing to publish."
             exit 1
           }
-          grep -Fq 'Remote working directory: /publish' /tmp/iqt-sftp-capabilities.log || {
-            echo "SFTP publish directory /publish is missing or not accessible; refusing to publish."
+          grep -Fq 'sftp> cd .' /tmp/iqt-sftp-capabilities.log || {
+            echo "SFTP client could not confirm the configured incoming directory; refusing to publish."
             exit 1
           }
           grep -Fq 'Sending SSH2_FXP_EXTENDED(posix-rename@openssh.com)' /tmp/iqt-sftp-capabilities.log || {
@@ -696,7 +696,7 @@ jobs:
             cat /tmp/iqt-sftp-capabilities.log
             exit 1
           }
-          echo "SFTP preflight passed: jailed root, writable /publish directory, and POSIX rename verified."
+          echo "SFTP preflight passed: configured /incoming directory and POSIX rename verified."
 
           printf '%s' "$UPDATE_PRIVATE_KEY_BASE64" | tr -d '[:space:]' | base64 --decode > /tmp/iq-update-private.pem
           python3 - <<'PY'
