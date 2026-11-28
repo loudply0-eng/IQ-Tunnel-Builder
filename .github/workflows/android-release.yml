@@ -686,8 +686,11 @@ jobs:
           }
           grep -Fq 'Sending SSH2_FXP_EXTENDED(posix-rename@openssh.com)' /tmp/iqt-sftp-capabilities.log || {
             echo "OpenSSH did not perform POSIX replacement during the SFTP preflight; refusing to publish."
+            echo "--- SFTP preflight diagnostics ---"
+            cat /tmp/iqt-sftp-capabilities.log
             exit 1
           }
+          echo "SFTP preflight passed: jailed root, writable /publish directory, and POSIX rename verified."
 
           printf '%s' "$UPDATE_PRIVATE_KEY_BASE64" | tr -d '[:space:]' | base64 --decode > /tmp/iq-update-private.pem
           python3 - <<'PY'
@@ -722,13 +725,13 @@ jobs:
               json.dump(manifest, f, ensure_ascii=False, separators=(",", ":"))
           PY
 
-          sftp -b - \
+          if ! sftp -b - \
             -i ~/.ssh/id_ed25519 \
             -oBatchMode=yes \
             -oStrictHostKeyChecking=yes \
             -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -oIdentitiesOnly=yes \
-            "$ORACLE_USER@$ORACLE_HOST" <<SFTP_BATCH
+            "$ORACLE_USER@$ORACLE_HOST" > /tmp/iqt-sftp-release-upload.log 2>&1 <<SFTP_BATCH
           put build/app/outputs/flutter-apk/app-release.apk $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.apk.tmp
           rename $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.apk.tmp $PUBLISH_DIR/iq-tunnel-$VERSION-$BUILD_NUMBER.apk
           put build/third-party/xray-core-v26.11.9-source.tar.gz $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.xray.tmp
@@ -736,10 +739,16 @@ jobs:
           put build/third-party/xray-core-v26.11.9-source.tar.gz.sha256 $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.sha256.tmp
           rename $PUBLISH_DIR/.iqt-$GITHUB_RUN_ID.sha256.tmp $PUBLISH_DIR/xray-core-v26.11.9-source.tar.gz.sha256
           SFTP_BATCH
-
+          then
+            echo "::error::SFTP upload of the signed APK or Xray source archive failed."
+            cat /tmp/iqt-sftp-release-upload.log
+            exit 1
+          fi
+          echo "SFTP upload completed for the signed APK and Xray source archive."
           PUBLIC_BASE="https://mahmoudaljuorany.store/updates/iq-tunnel"
           APK_URL="$PUBLIC_BASE/iq-tunnel-$VERSION-$BUILD_NUMBER.apk"
           curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 -D /tmp/iq-update-apk-headers.txt "$APK_URL" -o /tmp/iq-update-apk-published.apk
+          echo "Public APK URL downloaded successfully; checking HTTP headers and content length."
           python3 - <<'PY'
           from pathlib import Path
           import re
@@ -768,6 +777,7 @@ jobs:
             echo "Published APK SHA-256 does not match the locally built APK."
             exit 1
           }
+          echo "Published APK Content-Length and SHA-256 verified."
           curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 300 "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz" -o /tmp/iq-xray-core-published.tar.gz
           curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 -H 'Cache-Control: no-cache, no-store' "$PUBLIC_BASE/xray-core-v26.11.9-source.tar.gz.sha256" -o /tmp/iq-xray-core-published.tar.gz.sha256
           python3 - <<'PY'
@@ -805,19 +815,26 @@ jobs:
               raise SystemExit("Published Xray source archive SHA-256 does not match the locally built archive.")
           print(f"Verified published Xray source archive SHA-256: {actual}")
           PY
+          echo "Published Xray source archive and SHA-256 verified."
           # Keep the old manifest live until the new APK is publicly served
           # with the expected positive Content-Length and matching SHA-256.
           # Publishing the signed manifest is the final activation step.
-          sftp -b - \
+          if ! sftp -b - \
             -i ~/.ssh/id_ed25519 \
             -oBatchMode=yes \
             -oStrictHostKeyChecking=yes \
             -oUserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -oIdentitiesOnly=yes \
-            "$ORACLE_USER@$ORACLE_HOST" <<SFTP_MANIFEST
+            "$ORACLE_USER@$ORACLE_HOST" > /tmp/iqt-sftp-manifest-upload.log 2>&1 <<SFTP_MANIFEST
           put /tmp/iq-update-manifest.json $PUBLISH_DIR/.manifest-$GITHUB_RUN_ID.tmp
           rename $PUBLISH_DIR/.manifest-$GITHUB_RUN_ID.tmp $PUBLISH_DIR/manifest.json
           SFTP_MANIFEST
+          then
+            echo "::error::SFTP upload of the signed update manifest failed."
+            cat /tmp/iqt-sftp-manifest-upload.log
+            exit 1
+          fi
+          echo "Signed update manifest uploaded; verifying the public HTTPS copy."
           curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 60 -H 'Cache-Control: no-cache, no-store' -H 'Pragma: no-cache' "$PUBLIC_BASE/manifest.json" -o /tmp/iq-update-manifest-published.json
           cmp --silent /tmp/iq-update-manifest.json /tmp/iq-update-manifest-published.json
 
