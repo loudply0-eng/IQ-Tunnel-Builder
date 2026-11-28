@@ -12,6 +12,7 @@ android {
 
     defaultConfig {
         minSdk = 21
+        consumerProguardFiles("consumer-rules.pro")
     }
 
     // Match Flutter's generated Android app module to avoid Java/Kotlin
