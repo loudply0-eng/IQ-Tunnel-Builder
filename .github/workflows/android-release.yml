@@ -660,7 +660,7 @@ jobs:
           }
           trap cleanup_sftp_probe EXIT
 
-          sftp -vv -b - \
+          if ! sftp -vv -b - \
             -i ~/.ssh/id_ed25519 \
             -oBatchMode=yes \
             -oStrictHostKeyChecking=yes \
@@ -676,6 +676,12 @@ jobs:
           rename $PROBE_SOURCE $PROBE_TARGET
           rm $PROBE_TARGET
           SFTP_PROBE
+          then
+            echo "::error::SFTP preflight connection or rename probe failed."
+            cat /tmp/iqt-sftp-capabilities.log
+            exit 1
+          fi
+          echo "SFTP preflight connection and rename probe completed."
           grep -Fq 'Remote working directory: /' /tmp/iqt-sftp-capabilities.log || {
             echo "SFTP account did not start at its jailed root; refusing to publish."
             exit 1
