@@ -1472,7 +1472,10 @@ class _HomePageState extends State<HomePage> {
                             Text('تنزيل ${_formatBytes(downloadTotal)} • رفع ${_formatBytes(uploadTotal)}',
                                 style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                           ] else
-                            Text('إحصائيات حركة المرور قيد الربط',
+                            Text(
+                              tunnelStatus == VpnEngineStatus.connected
+                                  ? 'النفق متصل؛ بانتظار بيانات حركة المرور'
+                                  : 'اتصل بالنفق لعرض إحصائيات المرور',
                                 style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                           if (tunnelError != null && tunnelStatus != VpnEngineStatus.connected)
                             Padding(
