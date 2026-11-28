@@ -234,8 +234,8 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn("          posix-rename ", workflow)
         self.assertNotIn("rename /incoming/", workflow)
         self.assertNotIn("rename /.", workflow)
-        self.assertIn('PUBLISH_DIR="/publish"', workflow)
-        self.assertIn("Remote working directory: /", workflow)
+        self.assertIn('PUBLISH_DIR="."', workflow)
+        self.assertIn("Remote working directory: /incoming", workflow)
         self.assertIn("rename $PROBE_SOURCE $PROBE_TARGET", workflow)
         self.assertIn("Sending SSH2_FXP_EXTENDED(posix-rename@openssh.com)", workflow)
 
@@ -255,10 +255,11 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         )
         self.assertLess(preflight, probe_rename)
         self.assertLess(probe_rename, first_release_upload)
-        self.assertIn('PUBLISH_DIR="/publish"', deploy_step)
+        self.assertIn('PUBLISH_DIR="."', deploy_step)
         self.assertIn("ls -l /", deploy_step)
         self.assertIn("cd $PUBLISH_DIR", deploy_step)
-        self.assertIn("Remote working directory: /publish", deploy_step)
+        self.assertIn("sftp> cd .", deploy_step)
+        self.assertIn("Remote working directory: /incomingincoming", deploy_step)
         self.assertIn("put /tmp/iqt-sftp-rename-probe-source $PROBE_SOURCE", deploy_step)
         self.assertIn("put /tmp/iqt-sftp-rename-probe-target $PROBE_TARGET", deploy_step)
         self.assertIn("Sending SSH2_FXP_EXTENDED(posix-rename@openssh.com)", deploy_step)
@@ -276,7 +277,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             self.assertIn(f"-rm $PUBLISH_DIR/{temporary_name}", deploy_step)
         self.assertIn("refusing to publish", deploy_step)
         self.assertIn("> /tmp/iqt-sftp-capabilities.log 2>&1", deploy_step)
-        self.assertIn("Remote working directory: /", deploy_step)
+        self.assertIn("Remote working directory: /incoming", deploy_step)
 
 
     def test_deploy_uses_sftp_only_without_remote_shell_or_scp(self):
@@ -297,7 +298,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn("          posix-rename ", deploy_step)
         self.assertNotIn("rename /incoming/", deploy_step)
         self.assertNotIn("rename /.", deploy_step)
-        self.assertIn('PUBLISH_DIR="/publish"', deploy_step)
+        self.assertIn('PUBLISH_DIR="."', deploy_step)
         self.assertIn("put build/app/outputs/flutter-apk/app-release.apk $PUBLISH_DIR/.iqt-", deploy_step)
         manifest_publish = deploy_step.index("rename $PUBLISH_DIR/.manifest-")
         apk_hash_check = deploy_step.index(
@@ -334,8 +335,9 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("iqt-deploy", automatic)
         self.assertIn("/incoming", automatic)
         self.assertIn("root-owned", automatic)
-        self.assertIn("/incoming/publish", automatic)
-        self.assertIn("never directly to `/`", automatic)
+        self.assertIn("/var/www/ota-jail/iqt-jail/incoming", automatic)
+        self.assertIn('PUBLISH_DIR="."', automatic)
+        self.assertIn("/var/www/ota-jail/iqt-jail/incoming", security)
 
     def test_automatic_release_documentation_matches_disabled_dispatcher(self):
         automatic = (ROOT / "docs" / "AUTOMATIC_RELEASES.md").read_text(
