@@ -833,6 +833,7 @@ jobs:
             -oIdentitiesOnly=yes \
             "$ORACLE_USER@$ORACLE_HOST" > /tmp/iqt-sftp-manifest-upload.log 2>&1 <<SFTP_MANIFEST
           put /tmp/iq-update-manifest.json $PUBLISH_DIR/.manifest-$GITHUB_RUN_ID.tmp
+          chmod 640 $PUBLISH_DIR/.manifest-$GITHUB_RUN_ID.tmp
           rename $PUBLISH_DIR/.manifest-$GITHUB_RUN_ID.tmp $PUBLISH_DIR/manifest.json
           SFTP_MANIFEST
           then

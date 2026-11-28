@@ -300,6 +300,12 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn("rename /.", deploy_step)
         self.assertIn('PUBLISH_DIR="."', deploy_step)
         self.assertIn("put build/app/outputs/flutter-apk/app-release.apk $PUBLISH_DIR/.iqt-", deploy_step)
+        manifest_upload = deploy_step.index(
+            "put /tmp/iq-update-manifest.json $PUBLISH_DIR/.manifest-"
+        )
+        manifest_mode = deploy_step.index(
+            "chmod 640 $PUBLISH_DIR/.manifest-"
+        )
         manifest_publish = deploy_step.index("rename $PUBLISH_DIR/.manifest-")
         apk_hash_check = deploy_step.index(
             'test "$ACTUAL_APK_SHA256" = "$EXPECTED_APK_SHA256"'
@@ -312,6 +318,8 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         )
         self.assertLess(apk_hash_check, manifest_publish)
         self.assertLess(xray_hash_check, manifest_publish)
+        self.assertLess(manifest_upload, manifest_mode)
+        self.assertLess(manifest_mode, manifest_publish)
         self.assertLess(manifest_publish, manifest_compare)
 
 
