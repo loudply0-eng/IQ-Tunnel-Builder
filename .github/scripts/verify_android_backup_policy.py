@@ -133,6 +133,104 @@ def _manifest_resource_id(dump: str, attribute: str, resource_name: str, resourc
         )
 
 
+
+def _manifest_resource_file(
+    manifest_dump: str,
+    attribute: str,
+    resource_name: str,
+    resources_dump: str,
+) -> str:
+    """Resolve a manifest XML resource to its actual packaged APK path.
+
+    AAPT2/AGP may rename resource file paths while preserving their resource
+    IDs and names. Resolve the file path through the compiled resource table
+    rather than assuming it remains res/xml/<resource_name>.xml.
+    """
+    attribute_lines = [
+        line for line in manifest_dump.splitlines()
+        if re.search(
+            rf"(?:android:|http://schemas\.android\.com/apk/res/android:)"
+            rf"{re.escape(attribute)}\(",
+            line,
+        )
+    ]
+    if len(attribute_lines) != 1:
+        raise SystemExit(
+            f"APK manifest must contain exactly one android:{attribute} attribute."
+        )
+
+    line = attribute_lines[0]
+    symbolic = f"@xml/{resource_name}"
+    resource_id_match = re.search(r"=@(0x[0-9a-fA-F]+)", line)
+    if symbolic not in line and not resource_id_match:
+        raise SystemExit(
+            f"Could not resolve the compiled resource ID for android:{attribute}."
+        )
+
+    lines = resources_dump.splitlines()
+    headers = []
+    for line_number, item in enumerate(lines):
+        match = re.match(
+            r"^\s*resource\s+(0x[0-9a-fA-F]+)\s+(.+?)\s*$",
+            item,
+        )
+        if match:
+            headers.append(
+                (match.group(1).lower(), match.group(2), line_number, item)
+            )
+
+    expected_type_name = f"xml/{resource_name}".lower()
+    if resource_id_match:
+        resource_id = resource_id_match.group(1).lower()
+        candidates = [
+            entry for entry in headers
+            if entry[0] == resource_id and entry[1].lower().endswith(expected_type_name)
+        ]
+    else:
+        candidates = [
+            entry for entry in headers
+            if entry[1].lower().endswith(expected_type_name)
+        ]
+
+    if len(candidates) != 1:
+        raise SystemExit(
+            f"android:{attribute} does not resolve uniquely to xml/{resource_name}; "
+            f"matching resource-table entries: {[entry[3] for entry in candidates[:5]]!r}"
+        )
+
+    selected = candidates[0]
+    start_line = selected[2]
+    later_headers = [entry for entry in headers if entry[2] > start_line]
+    end_line = later_headers[0][2] if later_headers else len(lines)
+    resource_block = "\n".join(lines[start_line:end_line])
+    paths = re.findall(r"\(file\)\s+(res/[^\s]+)", resource_block)
+
+    if len(paths) != 1:
+        raise SystemExit(
+            f"Expected exactly one packaged XML file for xml/{resource_name}; "
+            f"AAPT2 resource-table block was: {resource_block[:1200]!r}"
+        )
+    return paths[0]
+
+
+
+def _aapt2_xmltree(aapt2: str, apk: Path, internal_path: str, label: str) -> str:
+    result = subprocess.run(
+        [aapt2, "dump", "xmltree", str(apk), "--file", internal_path],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if result.returncode != 0:
+        detail = (result.stdout or "").strip()
+        raise SystemExit(
+            f"AAPT2 could not inspect packaged {label} at {internal_path!r}. "
+            f"Exit code: {result.returncode}. Output: {detail[-1800:]!r}"
+        )
+    return result.stdout
+
+
 def validate_dumps(
     manifest: str,
     legacy: str,
@@ -178,36 +276,55 @@ def verify(
     expect_not_debuggable: bool = False,
 ) -> None:
     evidence_dir.mkdir(parents=True, exist_ok=True)
-    files = {
-        "manifest": "AndroidManifest.xml",
-        "legacy": "res/xml/backup_rules.xml",
-        "extraction": "res/xml/data_extraction_rules.xml",
-    }
-    dumps = {}
-    for key, internal_path in files.items():
-        result = subprocess.run(
-            [aapt2, "dump", "xmltree", str(apk), "--file", internal_path],
-            check=True,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-        )
-        dumps[key] = result.stdout
-        (evidence_dir / f"{key}.xmltree.txt").write_text(result.stdout, encoding="utf-8")
 
     resources_result = subprocess.run(
         [aapt2, "dump", "resources", str(apk)],
-        check=True,
+        check=False,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
-    (evidence_dir / "resources.txt").write_text(resources_result.stdout, encoding="utf-8")
+    if resources_result.returncode != 0:
+        detail = (resources_result.stdout or "").strip()
+        raise SystemExit(
+            f"AAPT2 could not inspect the APK resource table. "
+            f"Exit code: {resources_result.returncode}. Output: {detail[-1800:]!r}"
+        )
+    resources_dump = resources_result.stdout
+    (evidence_dir / "resources.txt").write_text(
+        resources_dump, encoding="utf-8"
+    )
+
+    manifest_dump = _aapt2_xmltree(
+        aapt2, apk, "AndroidManifest.xml", "Android manifest"
+    )
+    legacy_path = _manifest_resource_file(
+        manifest_dump, "fullBackupContent", "backup_rules", resources_dump
+    )
+    extraction_path = _manifest_resource_file(
+        manifest_dump, "dataExtractionRules", "data_extraction_rules",
+        resources_dump,
+    )
+
+    dumps = {
+        "manifest": manifest_dump,
+        "legacy": _aapt2_xmltree(
+            aapt2, apk, legacy_path, "legacy backup rules"
+        ),
+        "extraction": _aapt2_xmltree(
+            aapt2, apk, extraction_path, "data extraction rules"
+        ),
+    }
+    for key, dump in dumps.items():
+        (evidence_dir / f"{key}.xmltree.txt").write_text(
+            dump, encoding="utf-8"
+        )
+
     validate_dumps(
         dumps["manifest"],
         dumps["legacy"],
         dumps["extraction"],
-        resources_result.stdout,
+        resources_dump,
         expect_not_debuggable=expect_not_debuggable,
     )
     (evidence_dir / "verification.txt").write_text(
@@ -215,8 +332,10 @@ def verify(
         "and omits unused broad media/storage read permissions.\n",
         encoding="utf-8",
     )
-    print("AAPT2 verified the packaged Android backup and media-permission policy.")
-
+    print(
+        "AAPT2 verified the packaged Android backup and media-permission policy "
+        f"(legacy={legacy_path}, extraction={extraction_path})."
+    )
 
 def main() -> None:
     parser = argparse.ArgumentParser()
