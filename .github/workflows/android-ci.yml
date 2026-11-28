@@ -143,6 +143,15 @@ jobs:
           UPDATE_MANIFEST_URL: https://mahmoudaljuorany.store/updates/iq-tunnel/manifest.json
           UPDATE_PUBLIC_KEY: 4eOsYpXniRBp1ZTJjq5c3HbDW8tCvWbv1fr5PLVl+sk=
         run: flutter build apk --debug --dart-define=UPDATE_MANIFEST_URL="$UPDATE_MANIFEST_URL" --dart-define=UPDATE_PUBLIC_KEY="$UPDATE_PUBLIC_KEY"
+
+      - name: Build release APK and verify gomobile JNI survives R8
+        env:
+          UPDATE_MANIFEST_URL: https://mahmoudaljuorany.store/updates/iq-tunnel/manifest.json
+          UPDATE_PUBLIC_KEY: 4eOsYpXniRBp1ZTJjq5c3HbDW8tCvWbv1fr5PLVl+sk=
+        run: |
+          set -euo pipefail
+          flutter build apk --release --dart-define=UPDATE_MANIFEST_URL="$UPDATE_MANIFEST_URL" --dart-define=UPDATE_PUBLIC_KEY="$UPDATE_PUBLIC_KEY"
+          python3 tool/verify_libxray_jni_dex.py build/app/outputs/flutter-apk/app-release.apk
       - name: Verify packaged Android backup policy with AAPT2
         run: |
           set -euo pipefail
