@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  android-debug:
+  android-release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -138,21 +138,25 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze --no-fatal-infos
       - run: flutter test
-      - name: Build debug APK
+      - name: Build Release APK and verify libXray JNI methods survive R8
         env:
           UPDATE_MANIFEST_URL: https://mahmoudaljuorany.store/updates/iq-tunnel/manifest.json
           UPDATE_PUBLIC_KEY: 4eOsYpXniRBp1ZTJjq5c3HbDW8tCvWbv1fr5PLVl+sk=
-        run: flutter build apk --debug --dart-define=UPDATE_MANIFEST_URL="$UPDATE_MANIFEST_URL" --dart-define=UPDATE_PUBLIC_KEY="$UPDATE_PUBLIC_KEY"
+        run: |
+          set -euo pipefail
+          flutter build apk --release --dart-define=UPDATE_MANIFEST_URL="$UPDATE_MANIFEST_URL" --dart-define=UPDATE_PUBLIC_KEY="$UPDATE_PUBLIC_KEY"
+          python3 tool/verify_libxray_jni_dex.py build/app/outputs/flutter-apk/app-release.apk
       - name: Verify packaged Android backup policy with AAPT2
         run: |
           set -euo pipefail
-          APK=build/app/outputs/flutter-apk/app-debug.apk
+          APK=build/app/outputs/flutter-apk/app-release.apk
           AAPT2="$(find "$ANDROID_HOME/build-tools" -type f -name aapt2 | sort -V | tail -1)"
           test -n "$AAPT2" || { echo "Android Build Tools aapt2 is required for the backup-policy gate."; exit 1; }
           python3 .github/scripts/verify_android_backup_policy.py \
             --apk "$APK" \
             --aapt2 "$AAPT2" \
-            --evidence-dir build/android-backup-policy-evidence
+            --evidence-dir build/android-backup-policy-evidence \
+            --expect-not-debuggable
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         name: Upload Android backup-policy verification evidence
@@ -163,7 +167,7 @@ jobs:
           retention-days: 30
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: iq-tunnel-debug-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: iq-tunnel-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
