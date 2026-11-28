@@ -402,6 +402,9 @@ jobs:
           UPDATE_PUBLIC_KEY: 4eOsYpXniRBp1ZTJjq5c3HbDW8tCvWbv1fr5PLVl+sk=
         run: flutter build apk --release --build-number="${{ steps.release_meta.outputs.build_number }}" --dart-define=UPDATE_MANIFEST_URL="$UPDATE_MANIFEST_URL" --dart-define=UPDATE_PUBLIC_KEY="$UPDATE_PUBLIC_KEY"
 
+      - name: Verify libXray JNI methods survived the release shrinker
+        run: python3 tool/verify_libxray_jni_dex.py build/app/outputs/flutter-apk/app-release.apk
+
       - name: Verify packaged Android backup policy with AAPT2
         run: |
           set -euo pipefail
